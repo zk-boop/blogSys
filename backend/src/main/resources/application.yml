@@ -1,0 +1,20 @@
+spring:
+  application:
+    name: blogsys-backend
+  profiles:
+    active: local
+
+server:
+  port: 8080
+
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+  global-config:
+    db-config:
+      id-type: auto
+
+blogsys:
+  jwt:
+    secret: blogsys-dev-secret-key-please-change-in-production-0123456789
+    expire-hours: 72
