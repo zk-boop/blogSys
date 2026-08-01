@@ -27,7 +27,7 @@ const preview = computed(() => renderMarkdown(form.content))
 
 async function loadArticle() {
   if (!isEdit.value) return
-  const data = await articleApi.detail(route.params.id)
+  const data = await articleApi.editDetail(route.params.id)
   form.title = data.title
   form.summary = data.summary
   form.tagNames = data.tags

@@ -11,6 +11,7 @@
 | POST | `/api/auth/login` | 登录,body: `{username, password}`,返回 `{token, user}` |
 | GET | `/api/users/me` | 当前用户信息 |
 | PUT | `/api/users/me` | 修改资料,body: `{nickname?, avatar?}` |
+| GET | `/api/users/me/articles?page=&size=` | 我的文章分页列表(需登录) |
 
 ## 文章
 
@@ -18,6 +19,7 @@
 |---|---|---|
 | GET | `/api/articles?page=1&size=10&tagId=` | 文章分页列表(公开) |
 | GET | `/api/articles/{id}` | 文章详情(公开,浏览量 +1) |
+| GET | `/api/articles/{id}/edit` | 文章编辑回填(作者或管理员,浏览量不变) |
 | POST | `/api/articles` | 发布文章,body: `{title, content, summary?, tagNames?}`(需登录) |
 | PUT | `/api/articles/{id}` | 编辑文章(作者或管理员) |
 | DELETE | `/api/articles/{id}` | 删除文章(作者或管理员,级联删评论/点赞) |

@@ -58,6 +58,7 @@ class LikeServiceTest {
         assertTrue(result.isLiked());
         assertEquals(4, result.getLikeCount());
         verify(likeMapper).insert(any(Like.class));
+        verify(articleMapper).incrLikeCount(10L, 1);
     }
 
     @Test
@@ -79,6 +80,7 @@ class LikeServiceTest {
         assertFalse(result.isLiked());
         assertEquals(3, result.getLikeCount());
         verify(likeMapper).deleteById(99L);
+        verify(articleMapper).incrLikeCount(10L, -1);
     }
 
     @Test

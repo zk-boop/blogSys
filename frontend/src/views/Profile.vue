@@ -30,8 +30,8 @@ async function saveProfile() {
 }
 
 async function loadMyArticles() {
-  const data = await articleApi.page({ page: page.value, size: size.value })
-  myArticles.value = data.records.filter((a) => a.author?.id === store.user?.id)
+  const data = await articleApi.myArticles({ page: page.value, size: size.value })
+  myArticles.value = data.records
   total.value = data.total
 }
 

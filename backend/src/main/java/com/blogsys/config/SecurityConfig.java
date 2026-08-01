@@ -41,6 +41,7 @@ public class SecurityConfig {
                 .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/api/auth/**").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/articles/*/edit").authenticated()
                         .requestMatchers(HttpMethod.GET, "/api/articles/**", "/api/tags").permitAll()
                         .anyRequest().authenticated())
                 .exceptionHandling(e -> e

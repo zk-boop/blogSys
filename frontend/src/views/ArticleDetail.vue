@@ -17,6 +17,7 @@ const commentText = ref('')
 const liked = ref(false)
 const likeCount = ref(0)
 const submitting = ref(false)
+const liking = ref(false)
 
 const rendered = computed(() => renderMarkdown(article.value?.content))
 
@@ -37,9 +38,14 @@ async function toggleLike() {
     router.push('/login')
     return
   }
-  const data = await likeApi.toggle(articleId.value)
-  liked.value = data.liked
-  likeCount.value = data.likeCount
+  liking.value = true
+  try {
+    const data = await likeApi.toggle(articleId.value)
+    liked.value = data.liked
+    likeCount.value = data.likeCount
+  } finally {
+    liking.value = false
+  }
 }
 
 async function submitComment() {
@@ -109,6 +115,7 @@ onMounted(() => {
         <el-button
           :type="liked ? 'primary' : 'default'"
           round
+          :loading="liking"
           @click="toggleLike"
         >{{ liked ? '已点赞' : '点赞' }} {{ likeCount }}</el-button>
       </div>

@@ -2,6 +2,7 @@ package com.blogsys.service;
 
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.blogsys.common.ArticleStatus;
 import com.blogsys.common.BizException;
 import com.blogsys.common.PageResult;
 import com.blogsys.dto.ArticleRequest;
@@ -16,11 +17,13 @@ import com.blogsys.mapper.ArticleTagMapper;
 import com.blogsys.mapper.CommentMapper;
 import com.blogsys.mapper.LikeMapper;
 import com.blogsys.mapper.TagMapper;
+import com.blogsys.security.LoginUser;
 import com.blogsys.security.SecurityUtil;
 import com.blogsys.vo.ArticleDetailVO;
 import com.blogsys.vo.ArticleListItemVO;
 import com.blogsys.vo.UserBriefVO;
 import lombok.RequiredArgsConstructor;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
@@ -57,38 +60,48 @@ public class ArticleService {
             }
             result = articleMapper.selectPage(new Page<>(page, size),
                     Wrappers.<Article>lambdaQuery()
-                            .eq(Article::getStatus, 1)
+                            .eq(Article::getStatus, ArticleStatus.PUBLISHED.getValue())
                             .in(Article::getId, articleIds)
                             .orderByDesc(Article::getCreatedAt));
         } else {
             result = articleMapper.selectPage(new Page<>(page, size),
                     Wrappers.<Article>lambdaQuery()
-                            .eq(Article::getStatus, 1)
+                            .eq(Article::getStatus, ArticleStatus.PUBLISHED.getValue())
                             .orderByDesc(Article::getCreatedAt));
         }
-        List<ArticleListItemVO> records = attachUserAndTags(result.getRecords());
-        return new PageResult<>(result.getTotal(), result.getCurrent(), result.getSize(), records);
+        return new PageResult<>(result.getTotal(), result.getCurrent(), result.getSize(),
+                attachUserAndTags(result.getRecords()));
+    }
+
+    public PageResult<ArticleListItemVO> pageByUser(long page, long size, Long userId) {
+        Page<Article> result = articleMapper.selectPage(new Page<>(page, size),
+                Wrappers.<Article>lambdaQuery()
+                        .eq(Article::getUserId, userId)
+                        .eq(Article::getStatus, ArticleStatus.PUBLISHED.getValue())
+                        .orderByDesc(Article::getCreatedAt));
+        return new PageResult<>(result.getTotal(), result.getCurrent(), result.getSize(),
+                attachUserAndTags(result.getRecords()));
     }
 
     public ArticleDetailVO detail(Long id) {
-        Article article = articleMapper.selectById(id);
-        if (article == null || article.getStatus() != 1) {
-            throw new BizException(404, "文章不存在");
-        }
-        articleMapper.update(null, Wrappers.<Article>lambdaUpdate()
-                .eq(Article::getId, id)
-                .setSql("view_count = view_count + 1"));
+        Article article = requirePublished(id);
+        articleMapper.incrViewCount(id);
         article.setViewCount(article.getViewCount() + 1);
 
         ArticleDetailVO vo = new ArticleDetailVO();
         copyBase(article, vo);
         vo.setContent(article.getContent());
         vo.setLiked(isLikedByCurrentUser(id));
-        User author = userService.findByIds(List.of(article.getUserId())).get(article.getUserId());
-        if (author != null) {
-            vo.setAuthor(new UserBriefVO(author.getId(), author.getUsername(), author.getNickname(), author.getAvatar()));
-        }
-        vo.setTags(findTagsByArticles(List.of(id)).getOrDefault(id, List.of()));
+        attachAuthorAndTags(vo, article);
+        return vo;
+    }
+
+    public ArticleDetailVO editDetail(Long id) {
+        Article article = requireOwnArticle(id);
+        ArticleDetailVO vo = new ArticleDetailVO();
+        copyBase(article, vo);
+        vo.setContent(article.getContent());
+        attachAuthorAndTags(vo, article);
         return vo;
     }
 
@@ -98,7 +111,7 @@ public class ArticleService {
         Article article = new Article();
         article.setUserId(userId);
         applyRequest(article, request);
-        article.setStatus(1);
+        article.setStatus(ArticleStatus.PUBLISHED.getValue());
         article.setViewCount(0);
         article.setLikeCount(0);
         article.setCommentCount(0);
@@ -132,15 +145,20 @@ public class ArticleService {
                 .collect(Collectors.toMap(Article::getId, Function.identity()));
     }
 
+    private Article requirePublished(Long id) {
+        Article article = articleMapper.selectById(id);
+        if (article == null || article.getStatus() != ArticleStatus.PUBLISHED.getValue()) {
+            throw new BizException(404, "文章不存在");
+        }
+        return article;
+    }
+
     private Article requireOwnArticle(Long id) {
         Article article = articleMapper.selectById(id);
         if (article == null) {
             throw new BizException(404, "文章不存在");
         }
-        Long userId = SecurityUtil.currentUserId();
-        if (!article.getUserId().equals(userId) && !SecurityUtil.isAdmin()) {
-            throw new BizException(403, "只有作者或管理员可以操作该文章");
-        }
+        SecurityUtil.requireOwnerOrAdmin(article.getUserId());
         return article;
     }
 
@@ -160,17 +178,34 @@ public class ArticleService {
                 .filter(StringUtils::hasText)
                 .collect(Collectors.toSet());
         for (String name : unique) {
-            Tag tag = tagMapper.selectOne(Wrappers.<Tag>lambdaQuery().eq(Tag::getName, name));
-            if (tag == null) {
-                tag = new Tag();
-                tag.setName(name);
-                tagMapper.insert(tag);
-            }
-            ArticleTag articleTag = new ArticleTag();
-            articleTag.setArticleId(articleId);
-            articleTag.setTagId(tag.getId());
-            articleTagMapper.insert(articleTag);
+            articleTagMapper.insert(buildRelation(articleId, findOrCreateTag(name)));
         }
+    }
+
+    private Tag findOrCreateTag(String name) {
+        Tag tag = tagMapper.selectOne(Wrappers.<Tag>lambdaQuery().eq(Tag::getName, name));
+        if (tag != null) {
+            return tag;
+        }
+        Tag created = new Tag();
+        created.setName(name);
+        try {
+            tagMapper.insert(created);
+            return created;
+        } catch (DuplicateKeyException e) {
+            tag = tagMapper.selectOne(Wrappers.<Tag>lambdaQuery().eq(Tag::getName, name));
+            if (tag == null) {
+                throw e;
+            }
+            return tag;
+        }
+    }
+
+    private ArticleTag buildRelation(Long articleId, Tag tag) {
+        ArticleTag articleTag = new ArticleTag();
+        articleTag.setArticleId(articleId);
+        articleTag.setTagId(tag.getId());
+        return articleTag;
     }
 
     private List<ArticleListItemVO> attachUserAndTags(List<Article> articles) {
@@ -193,6 +228,14 @@ public class ArticleService {
         }).toList();
     }
 
+    private void attachAuthorAndTags(ArticleListItemVO vo, Article article) {
+        User user = userService.findByIds(List.of(article.getUserId())).get(article.getUserId());
+        if (user != null) {
+            vo.setAuthor(new UserBriefVO(user.getId(), user.getUsername(), user.getNickname(), user.getAvatar()));
+        }
+        vo.setTags(findTagsByArticles(List.of(article.getId())).getOrDefault(article.getId(), List.of()));
+    }
+
     private Map<Long, List<String>> findTagsByArticles(List<Long> articleIds) {
         List<ArticleTag> relations = articleTagMapper.selectList(
                 Wrappers.<ArticleTag>lambdaQuery().in(ArticleTag::getArticleId, articleIds));
@@ -209,7 +252,7 @@ public class ArticleService {
 
     private boolean isLikedByCurrentUser(Long articleId) {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        if (auth == null || !(auth.getPrincipal() instanceof com.blogsys.security.LoginUser loginUser)) {
+        if (auth == null || !(auth.getPrincipal() instanceof LoginUser loginUser)) {
             return false;
         }
         return likeMapper.selectCount(Wrappers.<Like>lambdaQuery()

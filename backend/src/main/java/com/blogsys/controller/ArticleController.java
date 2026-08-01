@@ -38,6 +38,11 @@ public class ArticleController {
         return Result.ok(articleService.detail(id));
     }
 
+    @GetMapping("/{id}/edit")
+    public Result<ArticleDetailVO> editDetail(@PathVariable Long id) {
+        return Result.ok(articleService.editDetail(id));
+    }
+
     @PostMapping
     public Result<Long> create(@Valid @RequestBody ArticleRequest request) {
         return Result.ok(articleService.create(request));

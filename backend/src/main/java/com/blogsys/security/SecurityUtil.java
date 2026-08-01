@@ -30,4 +30,11 @@ public final class SecurityUtil {
         return auth != null && auth.getPrincipal() instanceof LoginUser loginUser
                 && "ADMIN".equals(loginUser.getRole());
     }
+
+    public static void requireOwnerOrAdmin(Long ownerId) {
+        Long userId = currentUserId();
+        if (!ownerId.equals(userId) && !isAdmin()) {
+            throw new BizException(403, "只有作者或管理员可以执行该操作");
+        }
+    }
 }

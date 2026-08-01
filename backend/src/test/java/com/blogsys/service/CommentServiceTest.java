@@ -58,7 +58,7 @@ class CommentServiceTest {
         assertEquals("写得好!", vo.getContent());
         assertEquals(10L, vo.getArticleId());
         verify(commentMapper).insert(any(Comment.class));
-        verify(articleMapper).update(any(), any());
+        verify(articleMapper).incrCommentCount(10L, 1);
     }
 
     @Test
@@ -95,6 +95,6 @@ class CommentServiceTest {
         commentService.delete(5L);
 
         verify(commentMapper).deleteById(5L);
-        verify(articleMapper).update(any(), any());
+        verify(articleMapper).incrCommentCount(10L, -1);
     }
 }

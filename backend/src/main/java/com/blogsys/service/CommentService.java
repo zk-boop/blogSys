@@ -1,6 +1,7 @@
 package com.blogsys.service;
 
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
+import com.blogsys.common.ArticleStatus;
 import com.blogsys.common.BizException;
 import com.blogsys.dto.CommentRequest;
 import com.blogsys.entity.Article;
@@ -41,7 +42,7 @@ public class CommentService {
     @Transactional
     public CommentVO create(Long articleId, CommentRequest request) {
         Article article = articleMapper.selectById(articleId);
-        if (article == null || article.getStatus() != 1) {
+        if (article == null || article.getStatus() != ArticleStatus.PUBLISHED.getValue()) {
             throw new BizException(404, "文章不存在");
         }
         Comment comment = new Comment();
@@ -51,9 +52,7 @@ public class CommentService {
         comment.setContent(request.getContent());
         commentMapper.insert(comment);
 
-        articleMapper.update(null, Wrappers.<Article>lambdaUpdate()
-                .eq(Article::getId, articleId)
-                .setSql("comment_count = comment_count + 1"));
+        articleMapper.incrCommentCount(articleId, 1);
         return toVOs(List.of(comment)).get(0);
     }
 
@@ -63,14 +62,9 @@ public class CommentService {
         if (comment == null) {
             throw new BizException(404, "评论不存在");
         }
-        Long userId = SecurityUtil.currentUserId();
-        if (!comment.getUserId().equals(userId) && !SecurityUtil.isAdmin()) {
-            throw new BizException(403, "只有评论作者或管理员可以删除该评论");
-        }
+        SecurityUtil.requireOwnerOrAdmin(comment.getUserId());
         commentMapper.deleteById(id);
-        articleMapper.update(null, Wrappers.<Article>lambdaUpdate()
-                .eq(Article::getId, comment.getArticleId())
-                .setSql("comment_count = GREATEST(comment_count - 1, 0)"));
+        articleMapper.incrCommentCount(comment.getArticleId(), -1);
     }
 
     private List<CommentVO> toVOs(List<Comment> comments) {

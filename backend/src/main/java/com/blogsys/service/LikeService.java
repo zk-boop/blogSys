@@ -1,6 +1,7 @@
 package com.blogsys.service;
 
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
+import com.blogsys.common.ArticleStatus;
 import com.blogsys.common.BizException;
 import com.blogsys.entity.Article;
 import com.blogsys.entity.Like;
@@ -22,7 +23,7 @@ public class LikeService {
     @Transactional
     public LikeVO toggle(Long articleId) {
         Article article = articleMapper.selectById(articleId);
-        if (article == null || article.getStatus() != 1) {
+        if (article == null || article.getStatus() != ArticleStatus.PUBLISHED.getValue()) {
             throw new BizException(404, "文章不存在");
         }
         Long userId = SecurityUtil.currentUserId();
@@ -32,18 +33,14 @@ public class LikeService {
         boolean liked;
         if (existing != null) {
             likeMapper.deleteById(existing.getId());
-            articleMapper.update(null, Wrappers.<Article>lambdaUpdate()
-                    .eq(Article::getId, articleId)
-                    .setSql("like_count = GREATEST(like_count - 1, 0)"));
+            articleMapper.incrLikeCount(articleId, -1);
             liked = false;
         } else {
             Like like = new Like();
             like.setArticleId(articleId);
             like.setUserId(userId);
             likeMapper.insert(like);
-            articleMapper.update(null, Wrappers.<Article>lambdaUpdate()
-                    .eq(Article::getId, articleId)
-                    .setSql("like_count = like_count + 1"));
+            articleMapper.incrLikeCount(articleId, 1);
             liked = true;
         }
         Article fresh = articleMapper.selectById(articleId);
