@@ -1,4 +1,6 @@
 <script setup>
+import { avatarSrc } from '../utils/avatar'
+
 defineProps({
   article: { type: Object, required: true },
 })
@@ -24,7 +26,7 @@ defineProps({
     <p class="summary">{{ article.summary || '暂无摘要' }}</p>
     <div class="meta">
       <router-link :to="`/user/${article.author?.id}`" class="author">
-        <el-avatar :size="22" :src="article.author?.avatar" />
+        <el-avatar :size="22" :src="avatarSrc(article.author?.avatar, article.author?.nickname || article.author?.username)" />
         {{ article.author?.nickname || article.author?.username }}
       </router-link>
       <span class="date">{{ article.createdAt?.slice(0, 10) }}</span>

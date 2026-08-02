@@ -14,8 +14,6 @@ import org.springframework.stereotype.Component;
 @RequiredArgsConstructor
 public class DataInitializer implements CommandLineRunner {
 
-    private static final String DEFAULT_AVATAR = "https://api.dicebear.com/9.x/avataaars/svg?seed=admin";
-
     private final UserMapper userMapper;
     private final PasswordEncoder passwordEncoder;
 
@@ -28,7 +26,7 @@ public class DataInitializer implements CommandLineRunner {
         admin.setUsername("admin");
         admin.setPassword(passwordEncoder.encode("admin123"));
         admin.setNickname("管理员");
-        admin.setAvatar(DEFAULT_AVATAR);
+        admin.setAvatar("");
         admin.setRole("ADMIN");
         userMapper.insert(admin);
         log.info("初始化管理员账号: admin / admin123");

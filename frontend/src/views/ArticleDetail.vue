@@ -5,6 +5,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { articleApi, commentApi, likeApi } from '../api'
 import { useUserStore } from '../stores/user'
 import { renderMarkdown } from '../utils/markdown'
+import { avatarSrc } from '../utils/avatar'
 import CommentItem from '../components/CommentItem.vue'
 
 const route = useRoute()
@@ -107,7 +108,7 @@ onMounted(() => {
       <h1 class="detail-title">{{ article.title }}</h1>
       <div class="detail-meta">
         <router-link :to="`/user/${article.author?.id}`" class="author">
-          <el-avatar :size="28" :src="article.author?.avatar" />
+          <el-avatar :size="28" :src="avatarSrc(article.author?.avatar, article.author?.nickname || article.author?.username)" />
           {{ article.author?.nickname || article.author?.username }}
         </router-link>
         <span>{{ article.createdAt?.slice(0, 10) }}</span>

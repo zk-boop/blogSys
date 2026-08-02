@@ -3,6 +3,7 @@ import { ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { commentApi } from '../api'
 import { useUserStore } from '../stores/user'
+import { avatarSrc } from '../utils/avatar'
 import { useRouter } from 'vue-router'
 
 const props = defineProps({
@@ -60,7 +61,7 @@ async function submitReply() {
 <template>
   <div class="comment-item">
     <router-link :to="`/user/${comment.user?.id}`">
-      <el-avatar :size="32" :src="comment.user?.avatar" />
+      <el-avatar :size="32" :src="avatarSrc(comment.user?.avatar, comment.user?.nickname || comment.user?.username)" />
     </router-link>
     <div class="comment-body">
       <div class="comment-head">
@@ -90,7 +91,7 @@ async function submitReply() {
       <div v-if="comment.replies?.length" class="replies">
         <div v-for="reply in shownReplies()" :key="reply.id" class="reply-item">
           <router-link :to="`/user/${reply.user?.id}`">
-            <el-avatar :size="24" :src="reply.user?.avatar" />
+            <el-avatar :size="24" :src="avatarSrc(reply.user?.avatar, reply.user?.nickname || reply.user?.username)" />
           </router-link>
           <div class="reply-body">
             <div class="comment-head">

@@ -5,6 +5,7 @@ import { articleApi, authApi } from '../api'
 import { useUserStore } from '../stores/user'
 import ArticleCard from '../components/ArticleCard.vue'
 import ImageCropUpload from '../components/ImageCropUpload.vue'
+import { avatarSrc } from '../utils/avatar'
 
 const store = useUserStore()
 
@@ -51,7 +52,7 @@ onMounted(loadMyArticles)
     <el-card class="profile-card" shadow="never">
       <template #header>个人资料</template>
       <div class="avatar-box">
-        <el-avatar :size="72" :src="profileForm.avatar" />
+        <el-avatar :size="72" :src="avatarSrc(profileForm.avatar, store.user?.nickname || store.user?.username)" />
         <span class="username">@{{ store.user?.username }}</span>
         <ImageCropUpload
           button-text="上传头像"

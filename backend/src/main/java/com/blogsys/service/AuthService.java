@@ -32,7 +32,7 @@ public class AuthService {
         user.setUsername(request.getUsername());
         user.setPassword(passwordEncoder.encode(request.getPassword()));
         user.setNickname(request.getNickname());
-        user.setAvatar("https://api.dicebear.com/9.x/avataaars/svg?seed=" + request.getUsername());
+        user.setAvatar("");
         user.setRole("USER");
         userMapper.insert(user);
         return buildAuthResponse(user);

@@ -3,6 +3,7 @@ import { onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { userApi } from '../api'
 import ArticleCard from '../components/ArticleCard.vue'
+import { avatarSrc } from '../utils/avatar'
 
 const route = useRoute()
 const userId = () => Number(route.params.id)
@@ -42,7 +43,7 @@ onMounted(() => {
   <div>
     <el-empty v-if="invalidId()" description="用户不存在或已注销" />
     <el-card v-else-if="user" class="profile-head" shadow="never">
-      <el-avatar :size="80" :src="user.avatar" />
+      <el-avatar :size="80" :src="avatarSrc(user.avatar, user.nickname || user.username)" />
       <div class="info">
         <h2 class="nickname">{{ user.nickname }}</h2>
         <div class="username">@{{ user.username }}</div>

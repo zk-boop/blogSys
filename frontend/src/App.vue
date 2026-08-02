@@ -3,6 +3,7 @@ import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessageBox } from 'element-plus'
 import { useUserStore } from './stores/user'
+import { avatarSrc } from './utils/avatar'
 
 const store = useUserStore()
 const router = useRouter()
@@ -43,7 +44,7 @@ async function logout() {
         <template v-if="store.isLoggedIn">
           <el-dropdown>
             <span class="user-info">
-              <el-avatar :size="28" :src="store.user?.avatar" />
+              <el-avatar :size="28" :src="avatarSrc(store.user?.avatar, store.user?.nickname || store.user?.username)" />
               <span class="nickname">{{ store.user?.nickname }}</span>
               <el-tag v-if="store.isAdmin" size="small" type="danger" effect="plain">管理员</el-tag>
             </span>
