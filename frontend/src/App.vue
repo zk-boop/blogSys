@@ -38,6 +38,12 @@ function reload() {
   window.location.reload()
 }
 
+function retryNavigation() {
+  moduleError.value = false
+  router.replace({ path: '/', query: { t: Date.now() } })
+  router.replace(router.currentRoute.value.fullPath)
+}
+
 onMounted(() => {
   window.addEventListener('scroll', onScroll, { passive: true })
   onModuleLoadError(() => {
@@ -102,9 +108,10 @@ onBeforeUnmount(() => window.removeEventListener('scroll', onScroll))
 
   <main class="app-main">
     <div v-if="moduleError" class="load-error">
-      <el-result icon="warning" title="页面加载失败" sub-title="与开发服务器的连接已断开,请刷新页面重试">
+      <el-result icon="warning" title="页面加载失败" sub-title="与开发服务器的连接已断开,请重试或刷新页面">
         <template #extra>
-          <el-button type="primary" @click="reload">刷新页面</el-button>
+          <el-button type="primary" @click="retryNavigation">重新加载页面</el-button>
+          <el-button @click="reload">刷新页面</el-button>
         </template>
       </el-result>
     </div>
