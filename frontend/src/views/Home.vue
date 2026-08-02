@@ -213,9 +213,7 @@ onMounted(() => {
 }
 
 .side-card {
-  --el-card-border-radius: 10px;
-  border-radius: 10px;
-  overflow: hidden;
+  border-radius: 0;
 }
 
 .hot-list {
@@ -243,7 +241,6 @@ onMounted(() => {
   flex-shrink: 0;
   width: 20px;
   height: 20px;
-  border-radius: 4px;
   background: var(--code-bg);
   color: var(--text-secondary);
   font-size: 12px;
@@ -283,7 +280,6 @@ onMounted(() => {
 .cloud-tag {
   color: var(--text-secondary);
   padding: 2px 6px;
-  border-radius: 4px;
 }
 
 .cloud-tag:hover {
