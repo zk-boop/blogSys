@@ -44,7 +44,7 @@ public class UserService {
 
     public UserVO publicProfile(Long userId) {
         User user = userMapper.selectById(userId);
-        if (user == null) {
+        if (user == null || Integer.valueOf(1).equals(user.getStatus())) {
             throw new BizException(404, "用户不存在");
         }
         UserVO vo = AuthService.toVO(user);

@@ -62,6 +62,7 @@ public class UserController {
             @PathVariable Long id,
             @RequestParam(defaultValue = "1") long page,
             @RequestParam(defaultValue = "10") long size) {
+        userService.publicProfile(id);
         return Result.ok(articleService.pageByUser(page, size, id, com.blogsys.common.ArticleStatus.PUBLISHED.getValue()));
     }
 }

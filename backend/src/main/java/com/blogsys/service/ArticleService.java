@@ -54,10 +54,13 @@ public class ArticleService {
     private final FavoriteMapper favoriteMapper;
     private final UserService userService;
 
+    private static final String ACTIVE_USERS_SQL = "SELECT id FROM users WHERE status = 0";
+
     public PageResult<ArticleListItemVO> page(long page, long size, Long tagId, String keyword) {
         Page<Article> result;
         var wrapper = Wrappers.<Article>lambdaQuery()
                 .eq(Article::getStatus, ArticleStatus.PUBLISHED.getValue())
+                .inSql(Article::getUserId, ACTIVE_USERS_SQL)
                 .orderByDesc(Article::getCreatedAt);
         if (tagId != null) {
             List<Long> articleIds = articleTagMapper.selectList(
@@ -91,6 +94,7 @@ public class ArticleService {
         List<Article> articles = articleMapper.selectList(
                 Wrappers.<Article>lambdaQuery()
                         .eq(Article::getStatus, ArticleStatus.PUBLISHED.getValue())
+                        .inSql(Article::getUserId, ACTIVE_USERS_SQL)
                         .gt(Article::getViewCount, 0)
                         .orderByDesc(Article::getViewCount)
                         .last("LIMIT " + Math.min(size, 20)));
@@ -120,6 +124,9 @@ public class ArticleService {
                 throw new BizException(404, "文章不存在");
             }
         } else {
+            if (isAuthorBanned(article.getUserId()) && !SecurityUtil.isAdmin()) {
+                throw new BizException(404, "文章不存在");
+            }
             articleMapper.incrViewCount(id);
             article.setViewCount(article.getViewCount() + 1);
         }
@@ -163,11 +170,29 @@ public class ArticleService {
         int to = (int) Math.min(from + size, total);
         List<Favorite> slice = favorites.subList(from, to);
         Map<Long, Article> articles = findByIds(slice.stream().map(Favorite::getArticleId).toList());
+        Set<Long> bannedIds = bannedUserIdsOf(articles.values());
         List<Article> ordered = slice.stream()
                 .map(fav -> articles.get(fav.getArticleId()))
                 .filter(Objects::nonNull)
+                .filter(article -> !bannedIds.contains(article.getUserId()))
                 .toList();
         return new PageResult<>(total, page, size, attachUserAndTags(ordered));
+    }
+
+    private Set<Long> bannedUserIdsOf(java.util.Collection<Article> articles) {
+        if (articles.isEmpty()) {
+            return Set.of();
+        }
+        List<Long> userIds = articles.stream().map(Article::getUserId).distinct().toList();
+        return userService.findByIds(userIds).values().stream()
+                .filter(user -> Integer.valueOf(1).equals(user.getStatus()))
+                .map(User::getId)
+                .collect(Collectors.toSet());
+    }
+
+    private boolean isAuthorBanned(Long userId) {
+        User author = userService.findByIds(List.of(userId)).get(userId);
+        return author != null && Integer.valueOf(1).equals(author.getStatus());
     }
 
     private boolean isFavoritedByCurrentUser(Long articleId) {

@@ -52,7 +52,21 @@ public class CommentService {
                 Wrappers.<Comment>lambdaQuery()
                         .eq(Comment::getArticleId, articleId)
                         .orderByAsc(Comment::getCreatedAt));
-        return buildTree(toVOs(comments));
+        return buildTree(toVOs(filterBanned(comments)));
+    }
+
+    private List<Comment> filterBanned(List<Comment> comments) {
+        if (comments.isEmpty()) {
+            return comments;
+        }
+        List<Long> userIds = comments.stream().map(Comment::getUserId).distinct().toList();
+        Set<Long> banned = userService.findByIds(userIds).values().stream()
+                .filter(user -> Integer.valueOf(1).equals(user.getStatus()))
+                .map(User::getId)
+                .collect(Collectors.toSet());
+        return comments.stream()
+                .filter(comment -> !banned.contains(comment.getUserId()))
+                .toList();
     }
 
     private boolean canViewDraft(Long ownerId) {
