@@ -351,7 +351,9 @@ html.dark .el-card {
 
 .markdown-body img {
   max-width: 100%;
-  border-radius: 4px;
+  border-radius: 6px;
+  display: block;
+  margin: 1.2em auto;
 }
 
 .markdown-body table {
