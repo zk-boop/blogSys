@@ -213,7 +213,9 @@ onMounted(() => {
 }
 
 .side-card {
-  border-radius: 8px;
+  --el-card-border-radius: 10px;
+  border-radius: 10px;
+  overflow: hidden;
 }
 
 .hot-list {
