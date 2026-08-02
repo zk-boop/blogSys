@@ -147,8 +147,10 @@ onBeforeUnmount(() => window.removeEventListener('scroll', onScroll))
 </script>
 
 <template>
-  <div v-if="article" class="detail-wrap">
-    <div class="detail-main">
+  <div class="detail-page">
+    <template v-if="article">
+      <div class="detail-wrap">
+        <div class="detail-main">
       <el-card class="detail-card" shadow="never">
         <h1 class="detail-title">{{ article.title }}</h1>
         <div class="detail-meta">
@@ -229,10 +231,12 @@ onBeforeUnmount(() => window.removeEventListener('scroll', onScroll))
         >{{ item.text }}</a>
       </div>
     </aside>
-  </div>
-  <el-empty v-else description="文章不存在或已删除" />
+      </div>
+    </template>
+    <el-empty v-else description="文章不存在或已删除" />
 
-  <Lightbox v-if="lightboxSrc" :src="lightboxSrc" @close="lightboxSrc = ''" />
+    <Lightbox v-if="lightboxSrc" :src="lightboxSrc" @close="lightboxSrc = ''" />
+  </div>
 </template>
 
 <style scoped>
