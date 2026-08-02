@@ -43,6 +43,11 @@ function openCropper(file) {
     img.onload = () => {
       cropper.value?.destroy()
       cropper.value = new Cropper(img, { container: cropWrapRef.value })
+      const canvas = cropper.value.getCropperCanvas()
+      if (canvas) {
+        canvas.style.width = '100%'
+        canvas.style.height = '100%'
+      }
       const selection = cropper.value.getCropperSelection()
       if (selection) {
         selection.aspectRatio = props.aspectRatio
@@ -153,19 +158,17 @@ function cancel() {
 }
 
 .cropper-wrap {
-  height: 70vh;
+  height: 60vh;
+  min-height: 320px;
   overflow: hidden;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: #f5f7fa;
-  border-radius: 6px;
+  position: relative;
 }
 
-.cropper-wrap img {
+.cropper-wrap :deep(cropper-canvas),
+.cropper-wrap :deep(cropper-image) {
   display: block;
-  max-width: 100%;
-  max-height: 100%;
+  width: 100%;
+  height: 100%;
 }
 
 .crop-toolbar {
