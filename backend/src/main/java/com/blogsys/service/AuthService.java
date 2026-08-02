@@ -44,6 +44,9 @@ public class AuthService {
         if (user == null || !passwordEncoder.matches(request.getPassword(), user.getPassword())) {
             throw new BizException("用户名或密码错误");
         }
+        if (Integer.valueOf(1).equals(user.getStatus())) {
+            throw new BizException(403, "账号已被封禁,请联系管理员");
+        }
         return buildAuthResponse(user);
     }
 

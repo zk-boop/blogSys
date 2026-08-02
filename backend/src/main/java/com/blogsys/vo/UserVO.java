@@ -13,6 +13,7 @@ public class UserVO {
     private String nickname;
     private String avatar;
     private String role;
+    private Integer status;
     private LocalDateTime createdAt;
 
     @JsonInclude(JsonInclude.Include.NON_NULL)

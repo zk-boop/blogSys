@@ -1,8 +1,10 @@
 package com.blogsys.service;
 
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.blogsys.common.ArticleStatus;
 import com.blogsys.common.BizException;
+import com.blogsys.common.PageResult;
 import com.blogsys.dto.CommentRequest;
 import com.blogsys.entity.Article;
 import com.blogsys.entity.Comment;
@@ -10,11 +12,13 @@ import com.blogsys.entity.User;
 import com.blogsys.mapper.ArticleMapper;
 import com.blogsys.mapper.CommentMapper;
 import com.blogsys.security.SecurityUtil;
+import com.blogsys.vo.AdminCommentVO;
 import com.blogsys.vo.CommentVO;
 import com.blogsys.vo.UserBriefVO;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -22,6 +26,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -41,6 +46,39 @@ public class CommentService {
                         .eq(Comment::getArticleId, articleId)
                         .orderByAsc(Comment::getCreatedAt));
         return buildTree(toVOs(comments));
+    }
+
+    public PageResult<AdminCommentVO> adminPage(long page, long size, String keyword) {
+        Page<Comment> result = commentMapper.selectPage(new Page<>(page, size),
+                Wrappers.<Comment>lambdaQuery()
+                        .like(StringUtils.hasText(keyword), Comment::getContent, keyword)
+                        .orderByDesc(Comment::getCreatedAt));
+        List<AdminCommentVO> records = toAdminVOs(result.getRecords());
+        return new PageResult<>(result.getTotal(), result.getCurrent(), result.getSize(), records);
+    }
+
+    private List<AdminCommentVO> toAdminVOs(List<Comment> comments) {
+        if (comments.isEmpty()) {
+            return List.of();
+        }
+        List<Long> userIds = comments.stream().map(Comment::getUserId).distinct().toList();
+        Map<Long, User> users = userService.findByIds(userIds);
+        List<Long> articleIds = comments.stream().map(Comment::getArticleId).distinct().toList();
+        Map<Long, String> articleTitles = articleMapper.selectBatchIds(articleIds).stream()
+                .collect(Collectors.toMap(Article::getId, Article::getTitle));
+        return comments.stream().map(comment -> {
+            AdminCommentVO vo = new AdminCommentVO();
+            vo.setId(comment.getId());
+            vo.setArticleId(comment.getArticleId());
+            vo.setArticleTitle(articleTitles.getOrDefault(comment.getArticleId(), "(文章已删除)"));
+            vo.setContent(comment.getContent());
+            vo.setCreatedAt(comment.getCreatedAt());
+            User user = users.get(comment.getUserId());
+            if (user != null) {
+                vo.setUser(new UserBriefVO(user.getId(), user.getUsername(), user.getNickname(), user.getAvatar()));
+            }
+            return vo;
+        }).toList();
     }
 
     @Transactional

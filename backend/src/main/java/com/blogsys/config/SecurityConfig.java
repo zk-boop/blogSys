@@ -45,6 +45,7 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/articles/**", "/api/tags").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/users/{id:[0-9]+}", "/api/users/{id:[0-9]+}/articles")
                         .permitAll()
+                        .requestMatchers("/api/admin/**").hasRole("ADMIN")
                         .anyRequest().authenticated())
                 .exceptionHandling(e -> e
                         .authenticationEntryPoint((req, res, ex) -> writeJson(res, 401, "未登录或登录已过期"))

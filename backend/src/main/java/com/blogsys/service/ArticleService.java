@@ -93,6 +93,19 @@ public class ArticleService {
         return attachUserAndTags(articles);
     }
 
+    public PageResult<ArticleListItemVO> adminPage(long page, long size, String keyword, Integer status, Long userId) {
+        Page<Article> result = articleMapper.selectPage(new Page<>(page, size),
+                Wrappers.<Article>lambdaQuery()
+                        .eq(status != null, Article::getStatus, status)
+                        .eq(userId != null, Article::getUserId, userId)
+                        .and(StringUtils.hasText(keyword), w -> w
+                                .like(Article::getTitle, keyword)
+                                .or().like(Article::getContent, keyword))
+                        .orderByDesc(Article::getCreatedAt));
+        return new PageResult<>(result.getTotal(), result.getCurrent(), result.getSize(),
+                attachUserAndTags(result.getRecords()));
+    }
+
     public ArticleDetailVO detail(Long id) {
         Article article = articleMapper.selectById(id);
         if (article == null) {

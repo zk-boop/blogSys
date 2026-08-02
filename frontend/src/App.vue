@@ -38,6 +38,7 @@ onBeforeUnmount(() => window.removeEventListener('scroll', onScroll))
       <nav class="nav">
         <router-link to="/">首页</router-link>
         <router-link v-if="store.isLoggedIn" to="/write">写文章</router-link>
+        <router-link v-if="store.isAdmin" to="/admin">管理后台</router-link>
       </nav>
       <div class="search-box">
         <el-input

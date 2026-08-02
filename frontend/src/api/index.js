@@ -37,6 +37,20 @@ export const tagApi = {
   list: () => http.get('/tags'),
 }
 
+export const adminApi = {
+  stats: () => http.get('/admin/stats'),
+  users: (params) => http.get('/admin/users', { params }),
+  updateUserStatus: (id, status) => http.put(`/admin/users/${id}/status`, { status }),
+  updateUserRole: (id, role) => http.put(`/admin/users/${id}/role`, { role }),
+  articles: (params) => http.get('/admin/articles', { params }),
+  removeArticle: (id) => http.delete(`/admin/articles/${id}`),
+  comments: (params) => http.get('/admin/comments', { params }),
+  removeComment: (id) => http.delete(`/admin/comments/${id}`),
+  tags: () => http.get('/admin/tags'),
+  renameTag: (id, name) => http.put(`/admin/tags/${id}`, { name }),
+  removeTag: (id) => http.delete(`/admin/tags/${id}`),
+}
+
 export const uploadApi = {
   image: (file, type = 'content') => {
     const form = new FormData()

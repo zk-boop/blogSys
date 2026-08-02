@@ -10,6 +10,19 @@ const routes = [
   { path: '/write', name: 'write', component: () => import('../views/Write.vue'), meta: { requiresAuth: true } },
   { path: '/write/:id', name: 'writeEdit', component: () => import('../views/Write.vue'), meta: { requiresAuth: true } },
   { path: '/me', name: 'me', component: () => import('../views/Profile.vue'), meta: { requiresAuth: true } },
+  {
+    path: '/admin',
+    name: 'admin',
+    component: () => import('../views/admin/AdminLayout.vue'),
+    meta: { requiresAuth: true, requiresAdmin: true },
+    children: [
+      { path: '', name: 'adminDashboard', component: () => import('../views/admin/Dashboard.vue') },
+      { path: 'users', name: 'adminUsers', component: () => import('../views/admin/Users.vue') },
+      { path: 'articles', name: 'adminArticles', component: () => import('../views/admin/Articles.vue') },
+      { path: 'comments', name: 'adminComments', component: () => import('../views/admin/Comments.vue') },
+      { path: 'tags', name: 'adminTags', component: () => import('../views/admin/Tags.vue') },
+    ],
+  },
 ]
 
 const router = createRouter({
@@ -21,6 +34,9 @@ router.beforeEach((to) => {
   const store = useUserStore()
   if (to.meta.requiresAuth && !store.isLoggedIn) {
     return { name: 'login', query: { redirect: to.fullPath } }
+  }
+  if (to.meta.requiresAdmin && !store.isAdmin) {
+    return { name: 'home' }
   }
   if ((to.name === 'login' || to.name === 'register') && store.isLoggedIn) {
     return { name: 'home' }

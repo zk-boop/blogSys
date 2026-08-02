@@ -103,4 +103,20 @@ class AuthServiceTest {
 
         assertThrows(BizException.class, () -> authService.login(request));
     }
+
+    @Test
+    void login_shouldFail_whenUserBanned() {
+        User user = new User();
+        user.setUsername("alice");
+        user.setPassword(passwordEncoder.encode("secret1"));
+        user.setStatus(1);
+        when(userMapper.selectOne(any())).thenReturn(user);
+
+        LoginRequest request = new LoginRequest();
+        request.setUsername("alice");
+        request.setPassword("secret1");
+
+        BizException ex = assertThrows(BizException.class, () -> authService.login(request));
+        assertEquals(403, ex.getCode());
+    }
 }
