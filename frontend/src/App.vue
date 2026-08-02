@@ -48,6 +48,15 @@ onMounted(() => {
   window.addEventListener('scroll', onScroll, { passive: true })
   onModuleLoadError(() => {
     moduleError.value = true
+    setTimeout(() => {
+      if (!moduleError.value) return
+      router
+        .replace(router.currentRoute.value.fullPath)
+        .then(() => {
+          moduleError.value = false
+        })
+        .catch(() => {})
+    }, 1200)
   })
 })
 

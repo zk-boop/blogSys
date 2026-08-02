@@ -46,6 +46,9 @@ router.beforeEach((to) => {
 let loadErrorHandler = null
 
 router.onError((error) => {
+  if (error && error.type !== undefined) {
+    return
+  }
   loadErrorHandler?.(error)
 })
 
