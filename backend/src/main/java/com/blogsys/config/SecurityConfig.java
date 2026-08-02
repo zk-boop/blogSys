@@ -40,7 +40,7 @@ public class SecurityConfig {
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                 .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/api/auth/**", "/uploads/**").permitAll()
+                        .requestMatchers("/api/auth/**", "/uploads/**", "/rss").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/articles/*/edit").authenticated()
                         .requestMatchers(HttpMethod.GET, "/api/articles/**", "/api/tags").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/users/{id:[0-9]+}", "/api/users/{id:[0-9]+}/articles")

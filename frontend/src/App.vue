@@ -4,11 +4,18 @@ import { useRouter } from 'vue-router'
 import { ElMessageBox } from 'element-plus'
 import { useUserStore } from './stores/user'
 import { avatarSrc } from './utils/avatar'
+import { applyTheme, getTheme } from './utils/theme'
 
 const store = useUserStore()
 const router = useRouter()
 const keyword = ref('')
 const progress = ref(0)
+const theme = ref(getTheme())
+
+function toggleTheme() {
+  theme.value = theme.value === 'dark' ? 'light' : 'dark'
+  applyTheme(theme.value)
+}
 
 function search() {
   router.push({ path: '/', query: keyword.value ? { keyword: keyword.value } : {} })
@@ -53,6 +60,11 @@ onBeforeUnmount(() => window.removeEventListener('scroll', onScroll))
         </el-input>
       </div>
       <div class="user-area">
+        <el-tooltip :content="theme === 'dark' ? '切换到浅色' : '切换到深色'">
+          <el-button class="theme-btn" circle text @click="toggleTheme">
+            {{ theme === 'dark' ? '☀' : '☾' }}
+          </el-button>
+        </el-tooltip>
         <template v-if="store.isLoggedIn">
           <el-dropdown>
             <span class="user-info">

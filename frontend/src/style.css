@@ -154,6 +154,11 @@ a {
   width: 240px;
 }
 
+.theme-btn {
+  font-size: 18px;
+  color: var(--text-secondary);
+}
+
 .user-info {
   display: flex;
   align-items: center;
@@ -181,6 +186,67 @@ a {
 
 .app-footer .footer-link {
   color: var(--brand-color);
+}
+
+/* ===== 深色模式:书页黄的夜间变体 ===== */
+html.dark {
+  --brand-color: #d4a853;
+  --brand-light: #e0bd78;
+  --brand-dark: #c99b45;
+  --gold: #d4a853;
+  --bg-color: #1b1610;
+  --card-bg: #241d14;
+  --text-primary: #e9ddc6;
+  --text-secondary: #b5a88c;
+  --text-muted: #8c7f65;
+  --border-color: #3b3122;
+  --quote-bg: #2d2517;
+  --code-bg: #2d2517;
+  --hover-bg: #342a19;
+  --active-bg: #3d3119;
+  --paper-noise: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='2'/%3E%3C/filter%3E%3Crect width='120' height='120' filter='url(%23n)' opacity='0.06'/%3E%3C/svg%3E");
+
+  --el-color-primary: #d4a853;
+  --el-color-primary-light-3: #b98f3f;
+  --el-color-primary-light-5: #9c7a35;
+  --el-color-primary-light-7: #7a6130;
+  --el-color-primary-light-8: #6a5430;
+  --el-color-primary-light-9: #3a3020;
+  --el-color-primary-dark-2: #e0bd78;
+  --el-border-color: #3b3122;
+  --el-border-color-light: #45392a;
+  --el-border-color-lighter: #4d402f;
+  --el-fill-color-blank: #241d14;
+  --el-bg-color: #241d14;
+  --el-bg-color-page: #1b1610;
+  --el-bg-color-overlay: #2a2218;
+  --el-text-color-primary: #e9ddc6;
+  --el-text-color-regular: #b5a88c;
+  --el-text-color-secondary: #8c7f65;
+  --el-fill-color-light: #2d2517;
+  --el-fill-color-lighter: #2f2718;
+  --el-fill-color-extra-light: #332a19;
+  --el-color-success: #a89a5f;
+  --el-color-warning: #d4a853;
+  --el-color-danger: #c96b3f;
+  --el-color-error: #c96b3f;
+  --el-color-info: #8c7f65;
+}
+
+html.dark .markdown-body pre {
+  background: #221b12;
+}
+
+html.dark .markdown-body code {
+  color: #d9a05b;
+}
+
+html.dark .markdown-body strong {
+  color: #e0bd78;
+}
+
+html.dark .el-card {
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35) !important;
 }
 
 /* 页面切换过渡 */
