@@ -40,6 +40,7 @@ mvn spring-boot:run
 启动时自动创建管理员 `admin / admin123`(如不存在)。
 
 API 文档:`docs/` 见接口说明,后端默认端口 `8080`。
+接口文档(OpenAPI):启动后访问 `http://localhost:8080/swagger-ui.html`。
 
 ### 3. 前端
 
@@ -50,6 +51,20 @@ npm run dev
 ```
 
 访问 `http://localhost:5173`。
+
+## Docker 部署(可选)
+
+项目提供 `docker-compose.yml`,一键启动 MySQL + 后端 + 前端(nginx):
+
+```bash
+docker compose up -d --build
+```
+
+- 前端:`http://localhost:8081`
+- 后端 API:`http://localhost:8082`
+- MySQL 对外端口:`3307`
+
+注意:构建需要能够访问 Docker Hub(镜像加速器已在 `~/.docker/daemon.json` 配置)。配置通过环境变量覆盖,见 `docker-compose.yml` 中的 `DB_*`、`JWT_SECRET`、`MYSQL_ROOT_PASSWORD`。
 
 ## 功能范围(v1)
 

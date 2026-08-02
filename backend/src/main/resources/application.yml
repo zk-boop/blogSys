@@ -7,6 +7,10 @@ spring:
     multipart:
       max-file-size: 5MB
       max-request-size: 6MB
+  datasource:
+    url: ${DB_URL:jdbc:mysql://localhost:3306/blog_sys?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true}
+    username: ${DB_USERNAME:root}
+    password: ${DB_PASSWORD:}
 
 server:
   port: 8080
@@ -20,7 +24,13 @@ mybatis-plus:
 
 blogsys:
   jwt:
-    secret: blogsys-dev-secret-key-please-change-in-production-0123456789
+    secret: ${JWT_SECRET:blogsys-dev-secret-key-please-change-in-production-0123456789}
     expire-hours: 72
   upload:
-    dir: uploads
+    dir: ${UPLOAD_DIR:uploads}
+
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
