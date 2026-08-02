@@ -42,34 +42,43 @@ function openCropper(file) {
     const img = cropImageRef.value
     img.onload = () => {
       cropper.value?.destroy()
-      cropper.value = new Cropper(img, {
-        aspectRatio: props.aspectRatio,
-        viewMode: 1,
-        autoCropArea: 0.85,
-        background: false,
-        movable: true,
-        resizable: true,
-        wheelZoom: true,
-      })
+      cropper.value = new Cropper(img, { container: cropWrapRef.value })
+      const selection = cropper.value.getCropperSelection()
+      if (selection) {
+        selection.aspectRatio = props.aspectRatio
+        selection.initialCoverage = 0.85
+        selection.movable = true
+        selection.resizable = true
+        selection.zoomable = true
+        selection.keyboard = true
+        selection.$reset()
+      }
     }
     img.src = url
   })
 }
 
 function zoom(delta) {
-  cropper.value?.zoom(delta)
+  cropper.value?.getCropperImage()?.$zoom(delta)
 }
 
 function resetView() {
-  cropper.value?.reset()
+  const cropperInstance = cropper.value
+  cropperInstance?.getCropperImage()?.$resetTransform()
+  cropperInstance?.getCropperSelection()?.$reset()
+}
+
+function onWheel(event) {
+  event.preventDefault()
+  zoom(event.deltaY < 0 ? 0.05 : -0.05)
 }
 
 async function confirmCrop() {
-  if (!cropper.value) return
-  const canvas = cropper.value.getCroppedCanvas({
+  const selection = cropper.value?.getCropperSelection()
+  if (!selection) return
+  const canvas = await selection.$toCanvas({
     width: props.outputWidth,
     height: props.outputHeight,
-    imageSmoothingQuality: 'high',
   })
   const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.92))
   if (!blob) {
@@ -115,7 +124,11 @@ function cancel() {
       :close-on-click-modal="false"
       @closed="cancel"
     >
-      <div ref="cropWrapRef" class="cropper-wrap">
+      <div
+        ref="cropWrapRef"
+        class="cropper-wrap"
+        @wheel.passive="onWheel"
+      >
         <img ref="cropImageRef" alt="crop" />
       </div>
       <div class="crop-toolbar">
