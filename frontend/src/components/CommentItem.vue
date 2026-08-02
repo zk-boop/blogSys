@@ -147,12 +147,12 @@ async function submitReply() {
 }
 
 .comment-author:hover {
-  color: #409eff;
+  color: var(--brand-color);
 }
 
 .reply-to {
   font-size: 12px;
-  color: #409eff;
+  color: var(--brand-color);
 }
 
 .comment-date {

@@ -75,7 +75,7 @@ defineProps({
 }
 
 .title:hover {
-  color: #409eff;
+  color: var(--brand-color);
 }
 
 .tags {
@@ -113,7 +113,7 @@ defineProps({
 }
 
 .author:hover {
-  color: #409eff;
+  color: var(--brand-color);
 }
 
 .cover-link {

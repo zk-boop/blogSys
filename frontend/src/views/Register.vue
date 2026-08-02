@@ -117,6 +117,6 @@ async function submit() {
 }
 
 .auth-footer a {
-  color: #409eff;
+  color: var(--brand-color);
 }
 </style>
