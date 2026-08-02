@@ -71,7 +71,7 @@ async function submit() {
 .auth-title {
   text-align: center;
   margin-bottom: 20px;
-  color: #303133;
+  color: var(--text-primary);
 }
 
 .submit-btn {
@@ -82,7 +82,7 @@ async function submit() {
   margin-top: 16px;
   text-align: center;
   font-size: 14px;
-  color: #909399;
+  color: var(--text-muted);
 }
 
 .auth-footer a {

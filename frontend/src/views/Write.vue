@@ -256,13 +256,13 @@ onMounted(loadArticle)
 }
 
 .preview {
-  border: 1px solid #dcdfe6;
+  border: 1px solid var(--border-color);
   border-radius: 4px;
   padding: 12px;
   min-height: 420px;
   overflow-y: auto;
   line-height: 1.7;
-  background: #fafafa;
+  background: var(--card-bg);
 }
 
 .actions {

@@ -89,14 +89,14 @@ onMounted(() => {
 }
 
 .username {
-  color: #909399;
+  color: var(--text-muted);
   margin: 4px 0;
 }
 
 .stats {
   display: flex;
   gap: 20px;
-  color: #606266;
+  color: var(--text-secondary);
   font-size: 13px;
 }
 

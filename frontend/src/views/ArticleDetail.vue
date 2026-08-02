@@ -343,12 +343,12 @@ onBeforeUnmount(() => window.removeEventListener('scroll', onScroll))
 
   .toc-item:hover {
     color: var(--brand-color);
-    background: #f2f6ff;
+    background: var(--hover-bg);
   }
 
   .toc-item.active {
     color: var(--brand-color);
-    background: #e8effd;
+    background: var(--active-bg);
     font-weight: 600;
   }
 

@@ -68,7 +68,7 @@ defineProps({
 .title {
   font-size: 17px;
   font-weight: 600;
-  color: #303133;
+  color: var(--text-primary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -86,7 +86,7 @@ defineProps({
 }
 
 .summary {
-  color: #606266;
+  color: var(--text-secondary);
   line-height: 1.6;
   margin-top: 10px;
   flex: 1;
@@ -102,7 +102,7 @@ defineProps({
   gap: 16px;
   margin-top: 12px;
   font-size: 13px;
-  color: #909399;
+  color: var(--text-muted);
 }
 
 .author {

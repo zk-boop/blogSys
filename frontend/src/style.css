@@ -1,18 +1,46 @@
 :root {
-  --brand-color: #2563eb;
-  --bg-color: #f7f8fa;
-  --card-bg: #ffffff;
-  --text-primary: #1f2329;
-  --text-secondary: #646a73;
-  --text-muted: #8f959e;
-  --border-color: #e8eaed;
-  --el-color-primary: #2563eb;
-  --el-color-primary-light-3: #4f82ef;
-  --el-color-primary-light-5: #79a1f3;
-  --el-color-primary-light-7: #a4bdf6;
-  --el-color-primary-light-8: #bccdf8;
-  --el-color-primary-light-9: #e2eafd;
-  --el-color-primary-dark-2: #1e4fc4;
+  --brand-color: #8a5a2b;
+  --brand-light: #a97b45;
+  --brand-dark: #6b4423;
+  --gold: #b8860b;
+  --bg-color: #f3ecd8;
+  --card-bg: #faf5e6;
+  --text-primary: #43341f;
+  --text-secondary: #6b5d47;
+  --text-muted: #94866c;
+  --border-color: #e2d9bf;
+  --quote-bg: #f5ecd4;
+  --code-bg: #f1e9d2;
+  --hover-bg: #f0e6c8;
+  --active-bg: #e9dbb4;
+  --paper-noise: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='2'/%3E%3C/filter%3E%3Crect width='120' height='120' filter='url(%23n)' opacity='0.05'/%3E%3C/svg%3E");
+
+  /* Element Plus 主题 → 复古棕 */
+  --el-color-primary: #8a5a2b;
+  --el-color-primary-light-3: #a5764a;
+  --el-color-primary-light-5: #bf9a73;
+  --el-color-primary-light-7: #d6bda0;
+  --el-color-primary-light-8: #e2cfb7;
+  --el-color-primary-light-9: #f3ead9;
+  --el-color-primary-dark-2: #6f4822;
+  --el-border-color: #e2d9bf;
+  --el-border-color-light: #eadfc4;
+  --el-border-color-lighter: #f0e7d0;
+  --el-fill-color-blank: #faf5e6;
+  --el-bg-color: #faf5e6;
+  --el-bg-color-page: #f3ecd8;
+  --el-bg-color-overlay: #faf5e6;
+  --el-text-color-primary: #43341f;
+  --el-text-color-regular: #6b5d47;
+  --el-text-color-secondary: #94866c;
+  --el-fill-color-light: #f1e9d2;
+  --el-fill-color-lighter: #f4edd9;
+  --el-fill-color-extra-light: #f6f0df;
+  --el-color-success: #7a6b3f;
+  --el-color-warning: #b8860b;
+  --el-color-danger: #a04d2c;
+  --el-color-error: #a04d2c;
+  --el-color-info: #94866c;
 }
 
 * {
@@ -26,11 +54,11 @@ html {
 }
 
 body {
-  font-family: 'Helvetica Neue', Helvetica, 'PingFang SC', 'Hiragino Sans GB',
-    'Microsoft YaHei', Arial, sans-serif;
+  font-family: Georgia, 'Times New Roman', 'Songti SC', 'SimSun', 'STSong', serif;
   background-color: var(--bg-color);
+  background-image: var(--paper-noise);
   color: var(--text-primary);
-  line-height: 1.6;
+  line-height: 1.75;
 }
 
 a {
@@ -40,6 +68,7 @@ a {
 
 .app-header {
   background: var(--card-bg);
+  background-image: var(--paper-noise);
   border-bottom: 1px solid var(--border-color);
   position: sticky;
   top: 0;
@@ -51,7 +80,7 @@ a {
   top: 0;
   left: 0;
   height: 3px;
-  background: linear-gradient(90deg, #2563eb, #60a5fa);
+  background: linear-gradient(90deg, #b8860b, #d4a853);
   z-index: 200;
   transition: width 0.1s linear;
 }
@@ -67,10 +96,11 @@ a {
 }
 
 .logo {
-  font-size: 22px;
-  font-weight: 800;
-  color: var(--brand-color);
-  letter-spacing: -0.5px;
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--brand-dark);
+  font-family: Georgia, 'Times New Roman', serif;
+  letter-spacing: 0.5px;
 }
 
 .logo em {
@@ -78,7 +108,7 @@ a {
   color: var(--text-muted);
   font-weight: 400;
   font-size: 13px;
-  margin-left: 6px;
+  margin-left: 8px;
 }
 
 .nav {
@@ -142,6 +172,7 @@ a {
 .app-footer {
   border-top: 1px solid var(--border-color);
   background: var(--card-bg);
+  background-image: var(--paper-noise);
   padding: 20px;
   text-align: center;
   color: var(--text-muted);
@@ -171,50 +202,63 @@ a {
 /* Element Plus 卡片圆角统一 */
 .el-card {
   --el-card-border-color: var(--border-color);
-  --el-card-border-radius: 4px;
+  --el-card-border-radius: 2px;
+  box-shadow: 0 1px 3px rgba(74, 52, 24, 0.08) !important;
 }
 
-/* markdown 正文 */
+/* markdown 正文 — 书页排版 */
 .markdown-body h1,
 .markdown-body h2,
 .markdown-body h3 {
-  margin: 1.4em 0 0.6em;
+  margin: 1.5em 0 0.7em;
   color: var(--text-primary);
   line-height: 1.4;
+  font-family: Georgia, 'Songti SC', 'SimSun', serif;
   scroll-margin-top: 76px;
+}
+
+.markdown-body h1 {
+  font-size: 1.7em;
+  border-bottom: 1px solid var(--border-color);
+  padding-bottom: 0.35em;
 }
 
 .markdown-body h2 {
   font-size: 1.45em;
   padding-bottom: 0.3em;
-  border-bottom: 1px solid var(--border-color);
+  border-bottom: 1px dashed var(--border-color);
 }
 
 .markdown-body p {
-  margin: 0.9em 0;
+  margin: 1em 0;
+  text-align: justify;
 }
 
 .markdown-body a {
   color: var(--brand-color);
+  border-bottom: 1px solid rgba(138, 90, 43, 0.4);
 }
 
 .markdown-body a:hover {
-  text-decoration: underline;
+  color: var(--brand-dark);
+  border-bottom-color: var(--brand-dark);
 }
 
 .markdown-body code {
-  background: #f2f3f5;
+  background: var(--code-bg);
   padding: 2px 6px;
-  border-radius: 4px;
+  border-radius: 3px;
   font-size: 13px;
   font-family: Consolas, Monaco, 'Courier New', monospace;
+  color: #7a4a21;
 }
 
 .markdown-body pre {
-  border-radius: 8px;
+  border-radius: 6px;
   overflow-x: auto;
-  margin: 1.2em 0;
+  margin: 1.3em 0;
   border: 1px solid var(--border-color);
+  background: #f8f3e4;
 }
 
 .markdown-body pre code {
@@ -224,22 +268,22 @@ a {
 }
 
 .markdown-body blockquote {
-  border-left: 4px solid var(--brand-color);
-  background: #f0f4fe;
-  margin: 1.2em 0;
-  padding: 10px 16px;
+  border-left: 4px solid var(--gold);
+  background: var(--quote-bg);
+  margin: 1.3em 0;
+  padding: 12px 18px;
   color: var(--text-secondary);
-  border-radius: 0 6px 6px 0;
+  border-radius: 0 4px 4px 0;
 }
 
 .markdown-body img {
   max-width: 100%;
-  border-radius: 6px;
+  border-radius: 4px;
 }
 
 .markdown-body table {
   border-collapse: collapse;
-  margin: 1.2em 0;
+  margin: 1.3em 0;
   width: 100%;
 }
 
@@ -250,17 +294,49 @@ a {
 }
 
 .markdown-body th {
-  background: #f7f8fa;
+  background: var(--quote-bg);
 }
 
 .markdown-body ul,
 .markdown-body ol {
-  padding-left: 1.6em;
-  margin: 0.8em 0;
+  padding-left: 1.8em;
+  margin: 0.9em 0;
 }
 
 .markdown-body hr {
   border: none;
   border-top: 1px solid var(--border-color);
   margin: 2em 0;
+}
+
+.markdown-body strong {
+  color: var(--brand-dark);
+}
+
+/* 输入框、弹窗等 Element Plus 细节色 */
+.el-input__wrapper {
+  box-shadow: 0 0 0 1px var(--border-color) inset !important;
+  background-color: var(--card-bg) !important;
+}
+
+.el-textarea__inner {
+  background-color: var(--card-bg) !important;
+  box-shadow: 0 0 0 1px var(--border-color) inset !important;
+}
+
+.el-dialog {
+  --el-dialog-bg-color: var(--card-bg);
+}
+
+.el-dropdown-menu {
+  --el-bg-color-overlay: var(--card-bg);
+}
+
+.el-message-box {
+  --el-bg-color-overlay: var(--card-bg);
+}
+
+.el-skeleton {
+  --el-skeleton-color: #e7dcc0;
+  --el-skeleton-to-color: #f1e9d2;
 }

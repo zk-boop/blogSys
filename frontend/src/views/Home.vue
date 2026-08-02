@@ -242,7 +242,7 @@ onMounted(() => {
   width: 20px;
   height: 20px;
   border-radius: 4px;
-  background: #f0f2f5;
+  background: var(--code-bg);
   color: var(--text-secondary);
   font-size: 12px;
   display: flex;
@@ -286,12 +286,12 @@ onMounted(() => {
 
 .cloud-tag:hover {
   color: var(--brand-color);
-  background: #f2f6ff;
+  background: var(--hover-bg);
 }
 
 .cloud-tag.active {
   color: var(--brand-color);
-  background: #f2f6ff;
+  background: var(--hover-bg);
   font-weight: 600;
 }
 

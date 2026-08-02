@@ -127,7 +127,7 @@ async function submitReply() {
   display: flex;
   gap: 12px;
   padding: 14px 0;
-  border-bottom: 1px solid #f0f2f5;
+  border-bottom: 1px solid var(--border-color);
 }
 
 .comment-body {
@@ -143,7 +143,7 @@ async function submitReply() {
 .comment-author {
   font-weight: 600;
   font-size: 14px;
-  color: #303133;
+  color: var(--text-primary);
 }
 
 .comment-author:hover {
@@ -156,7 +156,7 @@ async function submitReply() {
 }
 
 .comment-date {
-  color: #909399;
+  color: var(--text-muted);
   font-size: 12px;
 }
 
@@ -171,13 +171,13 @@ async function submitReply() {
 .comment-content {
   margin-top: 6px;
   line-height: 1.6;
-  color: #303133;
+  color: var(--text-primary);
   white-space: pre-wrap;
 }
 
 .reply-input {
   margin-top: 10px;
-  background: #f7f8fa;
+  background: var(--quote-bg);
   border-radius: 6px;
   padding: 10px;
 }
@@ -191,7 +191,7 @@ async function submitReply() {
 
 .replies {
   margin-top: 10px;
-  background: #f7f8fa;
+  background: var(--quote-bg);
   border-radius: 6px;
   padding: 6px 12px;
 }
@@ -200,7 +200,7 @@ async function submitReply() {
   display: flex;
   gap: 10px;
   padding: 10px 0;
-  border-bottom: 1px dashed #e4e7ed;
+  border-bottom: 1px dashed var(--border-color);
 }
 
 .reply-item:last-child {

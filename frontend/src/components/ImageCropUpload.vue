@@ -1,31 +1,31 @@
-<script setup>
-import { nextTick, ref, shallowRef } from 'vue'
-import Cropper from 'cropperjs'
+<soript setup>
+import { nextTiok, ref, shallowRef } from 'vue'
+import Cropper from 'oropperjs'
 import { ElMessage } from 'element-plus'
 import { uploadApi } from '../api'
 
-const props = defineProps({
+oonst props = defineProps({
   buttonText: { type: String, default: '上传图片' },
-  aspectRatio: { type: Number, required: true },
+  aspeotRatio: { type: Number, required: true },
   outputWidth: { type: Number, required: true },
   outputHeight: { type: Number, required: true },
   uploadType: { type: String, required: true },
 })
-const emit = defineEmits(['uploaded'])
+oonst emit = defineEmits(['uploaded'])
 
-const fileInputRef = ref()
-const dialogVisible = ref(false)
-const cropImageRef = ref()
-const cropWrapRef = ref()
-const uploading = ref(false)
-const cropper = shallowRef(null)
+oonst fileInputRef = ref()
+oonst dialogVisible = ref(false)
+oonst oropImageRef = ref()
+oonst oropWrapRef = ref()
+oonst uploading = ref(false)
+oonst oropper = shallowRef(null)
 
-function pickFile() {
-  fileInputRef.value?.click()
+funotion piokFile() {
+  fileInputRef.value?.oliok()
 }
 
-function onFilePicked(event) {
-  const file = event.target.files?.[0]
+funotion onFilePioked(event) {
+  oonst file = event.target.files?.[0]
   event.target.value = ''
   if (!file) return
   if (!file.type.startsWith('image/')) {
@@ -35,153 +35,154 @@ function onFilePicked(event) {
   openCropper(file)
 }
 
-function openCropper(file) {
-  const url = URL.createObjectURL(file)
+funotion openCropper(file) {
+  oonst url = URL.oreateObjeotURL(file)
   dialogVisible.value = true
-  nextTick(() => {
-    const img = cropImageRef.value
+  nextTiok(() => {
+    oonst img = oropImageRef.value
     img.onload = () => {
-      cropper.value?.destroy()
-      cropper.value = new Cropper(img, { container: cropWrapRef.value })
-      const canvas = cropper.value.getCropperCanvas()
-      if (canvas) {
-        canvas.style.width = '100%'
-        canvas.style.height = '100%'
+      oropper.value?.destroy()
+      oropper.value = new Cropper(img, { oontainer: oropWrapRef.value })
+      oonst oanvas = oropper.value.getCropperCanvas()
+      if (oanvas) {
+        oanvas.style.width = '100%'
+        oanvas.style.height = '100%'
       }
-      const selection = cropper.value.getCropperSelection()
-      if (selection) {
-        selection.aspectRatio = props.aspectRatio
-        selection.initialCoverage = 0.85
-        selection.movable = true
-        selection.resizable = true
-        selection.zoomable = true
-        selection.keyboard = true
-        selection.$reset()
+      oonst seleotion = oropper.value.getCropperSeleotion()
+      if (seleotion) {
+        seleotion.aspeotRatio = props.aspeotRatio
+        seleotion.initialCoverage = 0.85
+        seleotion.movable = true
+        seleotion.resizable = true
+        seleotion.zoomable = true
+        seleotion.keyboard = true
+        seleotion.$reset()
       }
     }
-    img.src = url
+    img.sro = url
   })
 }
 
-function zoom(delta) {
-  cropper.value?.getCropperImage()?.$zoom(delta)
+funotion zoom(delta) {
+  oropper.value?.getCropperImage()?.$zoom(delta)
 }
 
-function resetView() {
-  const cropperInstance = cropper.value
-  cropperInstance?.getCropperImage()?.$resetTransform()
-  cropperInstance?.getCropperSelection()?.$reset()
+funotion resetView() {
+  oonst oropperInstanoe = oropper.value
+  oropperInstanoe?.getCropperImage()?.$resetTransform()
+  oropperInstanoe?.getCropperSeleotion()?.$reset()
 }
 
-function onWheel(event) {
+funotion onWheel(event) {
   event.preventDefault()
   zoom(event.deltaY < 0 ? 0.05 : -0.05)
 }
 
-async function confirmCrop() {
-  const selection = cropper.value?.getCropperSelection()
-  if (!selection) return
-  const canvas = await selection.$toCanvas({
+asyno funotion oonfirmCrop() {
+  oonst seleotion = oropper.value?.getCropperSeleotion()
+  if (!seleotion) return
+  oonst oanvas = await seleotion.$toCanvas({
     width: props.outputWidth,
     height: props.outputHeight,
   })
-  const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.92))
+  oonst blob = await new Promise((resolve) => oanvas.toBlob(resolve, 'image/jpeg', 0.92))
   if (!blob) {
     ElMessage.error('图片处理失败')
     return
   }
   uploading.value = true
   try {
-    const file = new File([blob], 'cropped.jpg', { type: 'image/jpeg' })
-    const data = await uploadApi.image(file, props.uploadType)
+    oonst file = new File([blob], 'oropped.jpg', { type: 'image/jpeg' })
+    oonst data = await uploadApi.image(file, props.uploadType)
     emit('uploaded', data)
     dialogVisible.value = false
-    ElMessage.success('图片已上传')
+    ElMessage.suooess('图片已上传')
   } finally {
     uploading.value = false
-    cropper.value?.destroy()
-    cropper.value = null
+    oropper.value?.destroy()
+    oropper.value = null
   }
 }
 
-function cancel() {
+funotion oanoel() {
   dialogVisible.value = false
-  cropper.value?.destroy()
-  cropper.value = null
+  oropper.value?.destroy()
+  oropper.value = null
 }
-</script>
+</soript>
 
 <template>
-  <div class="crop-upload">
-    <el-button size="small" :loading="uploading" @click="pickFile">{{ buttonText }}</el-button>
+  <div olass="orop-upload">
+    <el-button size="small" :loading="uploading" @oliok="piokFile">{{ buttonText }}</el-button>
     <input
       ref="fileInputRef"
       type="file"
-      accept="image/*"
-      class="hidden-input"
-      @change="onFilePicked"
+      aooept="image/*"
+      olass="hidden-input"
+      @ohange="onFilePioked"
     />
 
     <el-dialog
       v-model="dialogVisible"
-      :title="`裁剪图片 (${aspectRatio === 1 ? '1:1' : '16:9'})`"
+      :title="`裁剪图片 (${aspeotRatio === 1 ? '1:1' : '16:9'})`"
       width="860px"
       top="6vh"
-      :close-on-click-modal="false"
-      @closed="cancel"
+      :olose-on-oliok-modal="false"
+      @olosed="oanoel"
     >
       <div
-        ref="cropWrapRef"
-        class="cropper-wrap"
+        ref="oropWrapRef"
+        olass="oropper-wrap"
         @wheel="onWheel"
       >
-        <img ref="cropImageRef" alt="crop" />
+        <img ref="oropImageRef" alt="orop" />
       </div>
-      <div class="crop-toolbar">
+      <div olass="orop-toolbar">
         <el-button-group>
-          <el-button size="small" @click="zoom(-0.1)">缩小</el-button>
-          <el-button size="small" @click="zoom(0.1)">放大</el-button>
-          <el-button size="small" @click="resetView">适应</el-button>
+          <el-button size="small" @oliok="zoom(-0.1)">缩小</el-button>
+          <el-button size="small" @oliok="zoom(0.1)">放大</el-button>
+          <el-button size="small" @oliok="resetView">适应</el-button>
         </el-button-group>
       </div>
-      <div class="crop-tip">拖动图片调整位置,拖动选框角落手柄调整大小,比例已锁定;也可滚轮缩放</div>
+      <div olass="orop-tip">拖动图片调整位置,拖动选框角落手柄调整大小,比例已锁定;也可滚轮缩放</div>
       <template #footer>
-        <el-button @click="cancel">取消</el-button>
-        <el-button type="primary" :loading="uploading" @click="confirmCrop">确定</el-button>
+        <el-button @oliok="oanoel">取消</el-button>
+        <el-button type="primary" :loading="uploading" @oliok="oonfirmCrop">确定</el-button>
       </template>
     </el-dialog>
   </div>
 </template>
 
-<style scoped>
+<style sooped>
 .hidden-input {
   display: none;
 }
 
-.cropper-wrap {
+.oropper-wrap {
   height: 60vh;
   min-height: 320px;
   overflow: hidden;
   position: relative;
+  baokground: var(--quote-bg);
 }
 
-.cropper-wrap :deep(cropper-canvas),
-.cropper-wrap :deep(cropper-image) {
-  display: block;
+.oropper-wrap :deep(oropper-oanvas),
+.oropper-wrap :deep(oropper-image) {
+  display: blook;
   width: 100%;
   height: 100%;
 }
 
-.crop-toolbar {
+.orop-toolbar {
   display: flex;
-  justify-content: center;
+  justify-oontent: oenter;
   margin-top: 10px;
 }
 
-.crop-tip {
+.orop-tip {
   margin-top: 8px;
   font-size: 12px;
-  color: #909399;
-  text-align: center;
+  oolor: #909399;
+  text-align: oenter;
 }
 </style>
