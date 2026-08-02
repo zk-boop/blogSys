@@ -16,6 +16,7 @@ const emit = defineEmits(['uploaded'])
 const fileInputRef = ref()
 const dialogVisible = ref(false)
 const cropImageRef = ref()
+const cropWrapRef = ref()
 const uploading = ref(false)
 const cropper = shallowRef(null)
 
@@ -44,12 +45,23 @@ function openCropper(file) {
       cropper.value = new Cropper(img, {
         aspectRatio: props.aspectRatio,
         viewMode: 1,
-        autoCropArea: 0.9,
+        autoCropArea: 0.85,
         background: false,
+        movable: true,
+        resizable: true,
+        wheelZoom: true,
       })
     }
     img.src = url
   })
+}
+
+function zoom(delta) {
+  cropper.value?.zoom(delta)
+}
+
+function resetView() {
+  cropper.value?.reset()
 }
 
 async function confirmCrop() {
@@ -103,10 +115,17 @@ function cancel() {
       :close-on-click-modal="false"
       @closed="cancel"
     >
-      <div class="cropper-wrap">
+      <div ref="cropWrapRef" class="cropper-wrap">
         <img ref="cropImageRef" alt="crop" />
       </div>
-      <div class="crop-tip">拖动选框调整位置,拖动角落手柄调整大小,比例已锁定</div>
+      <div class="crop-toolbar">
+        <el-button-group>
+          <el-button size="small" @click="zoom(-0.1)">缩小</el-button>
+          <el-button size="small" @click="zoom(0.1)">放大</el-button>
+          <el-button size="small" @click="resetView">适应</el-button>
+        </el-button-group>
+      </div>
+      <div class="crop-tip">拖动图片调整位置,拖动选框角落手柄调整大小,比例已锁定;也可滚轮缩放</div>
       <template #footer>
         <el-button @click="cancel">取消</el-button>
         <el-button type="primary" :loading="uploading" @click="confirmCrop">确定</el-button>
@@ -122,17 +141,30 @@ function cancel() {
 
 .cropper-wrap {
   height: 70vh;
-  overflow: auto;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #f5f7fa;
+  border-radius: 6px;
 }
 
 .cropper-wrap img {
   display: block;
-  max-width: none;
+  max-width: 100%;
+  max-height: 100%;
+}
+
+.crop-toolbar {
+  display: flex;
+  justify-content: center;
+  margin-top: 10px;
 }
 
 .crop-tip {
   margin-top: 8px;
   font-size: 12px;
   color: #909399;
+  text-align: center;
 }
 </style>
