@@ -211,9 +211,8 @@ onMounted(() => {
 
 .detail-cover {
   width: 100%;
-  max-height: 420px;
-  object-fit: contain;
-  background: #f0f2f5;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
   border-radius: 8px;
   margin: 16px 0 4px;
 }

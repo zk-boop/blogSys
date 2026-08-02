@@ -6,6 +6,9 @@ defineProps({
 
 <template>
   <el-card class="article-card" shadow="hover">
+    <router-link v-if="article.cover" :to="`/article/${article.id}`">
+      <img :src="article.coverThumb || article.cover" class="cover" alt="cover" />
+    </router-link>
     <template #header>
       <div class="card-header">
         <router-link :to="`/article/${article.id}`" class="title">
@@ -18,10 +21,7 @@ defineProps({
         <slot name="extra" />
       </div>
     </template>
-    <div class="card-body">
-      <p class="summary">{{ article.summary || '暂无摘要' }}</p>
-      <img v-if="article.cover" :src="article.coverThumb || article.cover" class="cover" alt="cover" />
-    </div>
+    <p class="summary">{{ article.summary || '暂无摘要' }}</p>
     <div class="meta">
       <router-link :to="`/user/${article.author?.id}`" class="author">
         <el-avatar :size="22" :src="article.author?.avatar" />
@@ -39,6 +39,18 @@ defineProps({
 .article-card {
   margin-bottom: 16px;
   border-radius: 8px;
+}
+
+.article-card :deep(.el-card__body) {
+  padding-top: 4px;
+}
+
+.cover {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  border-radius: 8px 8px 0 0;
+  display: block;
 }
 
 .card-header {
@@ -64,28 +76,13 @@ defineProps({
   flex-wrap: wrap;
 }
 
-.card-body {
-  display: flex;
-  gap: 16px;
-  align-items: flex-start;
-}
-
 .summary {
   color: #606266;
   line-height: 1.6;
-  flex: 1;
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
-}
-
-.cover {
-  width: 160px;
-  height: 90px;
-  object-fit: cover;
-  border-radius: 6px;
-  flex-shrink: 0;
 }
 
 .meta {

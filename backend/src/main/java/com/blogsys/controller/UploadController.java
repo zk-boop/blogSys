@@ -35,6 +35,8 @@ public class UploadController {
     private static final Set<String> ALLOWED_EXTENSIONS =
             Set.of("jpg", "jpeg", "png", "gif", "webp");
     private static final int AVATAR_SIZE = 256;
+    private static final int COVER_W = 1280;
+    private static final int COVER_H = 720;
     private static final int COVER_THUMB_W = 640;
     private static final int COVER_THUMB_H = 360;
 
@@ -92,12 +94,13 @@ public class UploadController {
 
     private Result<Map<String, String>> saveCover(String base, String ext, byte[] bytes, BufferedImage image)
             throws IOException {
-        String filename = base + "." + ext;
         if (image == null) {
+            String filename = base + "." + ext;
             Files.write(uploadDir.resolve(filename), bytes);
             return Result.ok(urls(filename, null));
         }
-        Files.write(uploadDir.resolve(filename), toOriginalBytes(image, ext));
+        String filename = base + ".jpg";
+        Files.write(uploadDir.resolve(filename), toJpeg(coverFit(image, COVER_W, COVER_H)));
         String thumb = base + "-thumb.jpg";
         Files.write(uploadDir.resolve(thumb), toJpeg(coverFit(image, COVER_THUMB_W, COVER_THUMB_H)));
         return Result.ok(urls(filename, thumb));
@@ -115,18 +118,6 @@ public class UploadController {
         } catch (IOException e) {
             return null;
         }
-    }
-
-    private byte[] toOriginalBytes(BufferedImage image, String ext) throws IOException {
-        if (image == null) {
-            throw new BizException(400, "图片内容无法识别");
-        }
-        ByteArrayOutputStream out = new ByteArrayOutputStream();
-        String format = "jpeg".equals(ext) ? "jpg" : ext;
-        if (!ImageIO.write(image, format, out)) {
-            throw new BizException(400, "图片内容无法识别");
-        }
-        return out.toByteArray();
     }
 
     private byte[] toJpeg(BufferedImage image) throws IOException {

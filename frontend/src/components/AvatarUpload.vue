@@ -31,14 +31,17 @@ function openCropper(file) {
   const url = URL.createObjectURL(file)
   dialogVisible.value = true
   nextTick(() => {
-    cropper.value?.destroy()
-    cropImageRef.value.src = url
-    cropper.value = new Cropper(cropImageRef.value, {
-      aspectRatio: 1,
-      viewMode: 1,
-      autoCropArea: 0.8,
-      background: false,
-    })
+    const img = cropImageRef.value
+    img.onload = () => {
+      cropper.value?.destroy()
+      cropper.value = new Cropper(img, {
+        aspectRatio: 1,
+        viewMode: 1,
+        autoCropArea: 0.8,
+        background: false,
+      })
+    }
+    img.src = url
   })
 }
 
@@ -109,7 +112,9 @@ function cancel() {
 }
 
 .cropper-wrap {
-  max-height: 360px;
+  max-height: 420px;
+  display: flex;
+  justify-content: center;
 }
 
 .cropper-wrap img {
