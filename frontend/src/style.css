@@ -181,6 +181,7 @@ a {
   margin: 1.4em 0 0.6em;
   color: var(--text-primary);
   line-height: 1.4;
+  scroll-margin-top: 76px;
 }
 
 .markdown-body h2 {
