@@ -20,7 +20,7 @@ defineProps({
     </template>
     <div class="card-body">
       <p class="summary">{{ article.summary || '暂无摘要' }}</p>
-      <img v-if="article.cover" :src="article.cover" class="cover" alt="cover" />
+      <img v-if="article.cover" :src="article.coverThumb || article.cover" class="cover" alt="cover" />
     </div>
     <div class="meta">
       <router-link :to="`/user/${article.author?.id}`" class="author">

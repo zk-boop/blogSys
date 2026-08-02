@@ -37,9 +37,10 @@ export const tagApi = {
 }
 
 export const uploadApi = {
-  image: (file) => {
+  image: (file, type = 'content') => {
     const form = new FormData()
     form.append('file', file)
+    form.append('type', type)
     return http.post('/uploads', form)
   },
 }

@@ -287,10 +287,18 @@ public class ArticleService {
         vo.setTitle(article.getTitle());
         vo.setSummary(article.getSummary());
         vo.setCover(article.getCover());
+        vo.setCoverThumb(coverThumbOf(article.getCover()));
         vo.setStatus(article.getStatus());
         vo.setViewCount(article.getViewCount());
         vo.setLikeCount(article.getLikeCount());
         vo.setCommentCount(article.getCommentCount());
         vo.setCreatedAt(article.getCreatedAt());
+    }
+
+    private String coverThumbOf(String cover) {
+        if (!StringUtils.hasText(cover) || !cover.startsWith("/uploads/") || cover.endsWith(".webp")) {
+            return cover;
+        }
+        return cover.replaceAll("\\.\\w+$", "-thumb.jpg");
     }
 }

@@ -1,9 +1,10 @@
 <script setup>
 import { onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { articleApi, authApi, uploadApi } from '../api'
+import { articleApi, authApi } from '../api'
 import { useUserStore } from '../stores/user'
 import ArticleCard from '../components/ArticleCard.vue'
+import AvatarUpload from '../components/AvatarUpload.vue'
 
 const store = useUserStore()
 
@@ -17,8 +18,6 @@ const total = ref(0)
 const page = ref(1)
 const size = ref(10)
 const savingProfile = ref(false)
-const uploadingAvatar = ref(false)
-const avatarInputRef = ref()
 
 async function saveProfile() {
   savingProfile.value = true
@@ -31,22 +30,8 @@ async function saveProfile() {
   }
 }
 
-async function onAvatarPicked(event) {
-  const file = event.target.files?.[0]
-  event.target.value = ''
-  if (!file) return
-  if (!file.type.startsWith('image/')) {
-    ElMessage.warning('请选择图片文件')
-    return
-  }
-  uploadingAvatar.value = true
-  try {
-    const data = await uploadApi.image(file)
-    profileForm.avatar = data.url
-    ElMessage.success('头像已上传,记得保存资料')
-  } finally {
-    uploadingAvatar.value = false
-  }
+function onAvatarUploaded(url) {
+  profileForm.avatar = url
 }
 
 async function loadMyArticles() {
@@ -72,14 +57,7 @@ onMounted(loadMyArticles)
       <div class="avatar-box">
         <el-avatar :size="72" :src="profileForm.avatar" />
         <span class="username">@{{ store.user?.username }}</span>
-        <el-button size="small" :loading="uploadingAvatar" @click="avatarInputRef?.click()">上传头像</el-button>
-        <input
-          ref="avatarInputRef"
-          type="file"
-          accept="image/*"
-          class="hidden-input"
-          @change="onAvatarPicked"
-        />
+        <AvatarUpload @uploaded="onAvatarUploaded" />
       </div>
       <el-form label-position="top">
         <el-form-item label="昵称">
@@ -141,10 +119,6 @@ onMounted(loadMyArticles)
 .username {
   color: #909399;
   font-size: 13px;
-}
-
-.hidden-input {
-  display: none;
 }
 
 .section-title {

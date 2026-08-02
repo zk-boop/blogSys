@@ -55,8 +55,18 @@
 
 | 方法 | 路径 | 说明 |
 |---|---|---|
-| POST | `/api/uploads` | multipart 字段 `file`,返回 `{url: "/uploads/xxx.png"}`;限制 5MB,jpg/png/gif/webp |
+| POST | `/api/uploads?type=content` | multipart 字段 `file`。`type` 控制处理方式,见下。限制 5MB,jpg/png/gif/webp |
 | GET | `/uploads/**` | 上传的静态资源(公开) |
+
+`type` 处理规则:
+
+| type | 处理 |
+|---|---|
+| `avatar` | 居中裁剪 1:1 并缩放 256x256,输出 jpg |
+| `cover` | 保留原图 + 生成 640x360 缩略图,返回 `{url, thumbUrl}` |
+| `content` | 原样保存,返回 `{url}` |
+
+文章列表接口会附带 `coverThumb` 字段(封面缩略图 URL,供列表页使用;非 `/uploads/` 来源或 webp 则与 `cover` 相同)。
 
 ## 错误码
 

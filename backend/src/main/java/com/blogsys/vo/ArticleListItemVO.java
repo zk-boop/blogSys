@@ -12,6 +12,7 @@ public class ArticleListItemVO {
     private String title;
     private String summary;
     private String cover;
+    private String coverThumb;
     private Integer status;
     private Integer viewCount;
     private Integer likeCount;

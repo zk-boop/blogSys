@@ -113,7 +113,7 @@ async function onCoverPicked(event) {
   }
   uploading.value = true
   try {
-    const data = await uploadApi.image(file)
+    const data = await uploadApi.image(file, 'cover')
     form.cover = data.url
     ElMessage.success('封面已上传')
   } finally {
