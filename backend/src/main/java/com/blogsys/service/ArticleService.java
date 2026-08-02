@@ -160,10 +160,12 @@ public class ArticleService {
     @Transactional
     public void delete(Long id) {
         Article article = requireOwnArticle(id);
+        List<Long> removedTagIds = tagIdsOfArticle(id);
         articleMapper.deleteById(id);
         articleTagMapper.delete(Wrappers.<ArticleTag>lambdaQuery().eq(ArticleTag::getArticleId, id));
         commentMapper.delete(Wrappers.<Comment>lambdaQuery().eq(Comment::getArticleId, id));
         likeMapper.delete(Wrappers.<Like>lambdaQuery().eq(Like::getArticleId, id));
+        cleanupOrphanTags(removedTagIds);
     }
 
     public Map<Long, Article> findByIds(Collection<Long> ids) {
@@ -201,8 +203,10 @@ public class ArticleService {
     }
 
     private void syncTags(Long articleId, List<String> tagNames) {
+        List<Long> removedTagIds = tagIdsOfArticle(articleId);
         articleTagMapper.delete(Wrappers.<ArticleTag>lambdaQuery().eq(ArticleTag::getArticleId, articleId));
         if (tagNames == null) {
+            cleanupOrphanTags(removedTagIds);
             return;
         }
         Set<String> unique = tagNames.stream()
@@ -211,6 +215,23 @@ public class ArticleService {
                 .collect(Collectors.toSet());
         for (String name : unique) {
             articleTagMapper.insert(buildRelation(articleId, findOrCreateTag(name)));
+        }
+        cleanupOrphanTags(removedTagIds);
+    }
+
+    private List<Long> tagIdsOfArticle(Long articleId) {
+        return articleTagMapper.selectList(
+                        Wrappers.<ArticleTag>lambdaQuery().eq(ArticleTag::getArticleId, articleId))
+                .stream().map(ArticleTag::getTagId).distinct().toList();
+    }
+
+    private void cleanupOrphanTags(List<Long> tagIds) {
+        for (Long tagId : tagIds) {
+            long refs = articleTagMapper.selectCount(
+                    Wrappers.<ArticleTag>lambdaQuery().eq(ArticleTag::getTagId, tagId));
+            if (refs == 0) {
+                tagMapper.deleteById(tagId);
+            }
         }
     }
 
