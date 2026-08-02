@@ -5,12 +5,14 @@ import { ElMessageBox } from 'element-plus'
 import { useUserStore } from './stores/user'
 import { avatarSrc } from './utils/avatar'
 import { applyTheme, getTheme } from './utils/theme'
+import { onModuleLoadError } from './router'
 
 const store = useUserStore()
 const router = useRouter()
 const keyword = ref('')
 const progress = ref(0)
 const theme = ref(getTheme())
+const moduleError = ref(false)
 
 function toggleTheme() {
   theme.value = theme.value === 'dark' ? 'light' : 'dark'
@@ -32,7 +34,17 @@ function onScroll() {
   progress.value = total > 0 ? Math.min(100, (window.scrollY / total) * 100) : 0
 }
 
-onMounted(() => window.addEventListener('scroll', onScroll, { passive: true }))
+function reload() {
+  window.location.reload()
+}
+
+onMounted(() => {
+  window.addEventListener('scroll', onScroll, { passive: true })
+  onModuleLoadError(() => {
+    moduleError.value = true
+  })
+})
+
 onBeforeUnmount(() => window.removeEventListener('scroll', onScroll))
 </script>
 
@@ -89,7 +101,14 @@ onBeforeUnmount(() => window.removeEventListener('scroll', onScroll))
   </header>
 
   <main class="app-main">
-    <router-view v-slot="{ Component }">
+    <div v-if="moduleError" class="load-error">
+      <el-result icon="warning" title="页面加载失败" sub-title="与开发服务器的连接已断开,请刷新页面重试">
+        <template #extra>
+          <el-button type="primary" @click="reload">刷新页面</el-button>
+        </template>
+      </el-result>
+    </div>
+    <router-view v-else v-slot="{ Component }">
       <transition name="fade-slide" mode="out-in">
         <component :is="Component" />
       </transition>

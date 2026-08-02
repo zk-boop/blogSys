@@ -43,4 +43,22 @@ router.beforeEach((to) => {
   }
 })
 
+let loadErrorHandler = null
+
+router.onError((error) => {
+  const msg = String(error?.message || '')
+  const isModuleLoadError =
+    msg.includes('Failed to fetch dynamically imported module') ||
+    msg.includes('Importing a module script failed') ||
+    msg.includes('Error loading dynamically imported module') ||
+    msg.includes('error loading dynamically imported module')
+  if (isModuleLoadError) {
+    loadErrorHandler?.()
+  }
+})
+
+export function onModuleLoadError(handler) {
+  loadErrorHandler = handler
+}
+
 export default router
