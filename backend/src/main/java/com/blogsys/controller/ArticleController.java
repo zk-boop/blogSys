@@ -18,6 +18,8 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.List;
+
 @RestController
 @RequestMapping("/api/articles")
 @RequiredArgsConstructor
@@ -32,6 +34,11 @@ public class ArticleController {
             @RequestParam(required = false) Long tagId,
             @RequestParam(required = false) String keyword) {
         return Result.ok(articleService.page(page, size, tagId, keyword));
+    }
+
+    @GetMapping("/hot")
+    public Result<List<ArticleListItemVO>> hot(@RequestParam(defaultValue = "5") int size) {
+        return Result.ok(articleService.hot(size));
     }
 
     @GetMapping("/{id}")

@@ -14,6 +14,7 @@ export const userApi = {
 
 export const articleApi = {
   page: (params) => http.get('/articles', { params }),
+  hot: () => http.get('/articles/hot'),
   detail: (id) => http.get(`/articles/${id}`),
   editDetail: (id) => http.get(`/articles/${id}/edit`),
   myArticles: (params) => http.get('/users/me/articles', { params }),

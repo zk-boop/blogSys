@@ -1,8 +1,8 @@
 package com.blogsys.controller;
 
 import com.blogsys.common.Result;
-import com.blogsys.entity.Tag;
 import com.blogsys.service.TagService;
+import com.blogsys.vo.TagVO;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -18,7 +18,7 @@ public class TagController {
     private final TagService tagService;
 
     @GetMapping
-    public Result<List<Tag>> list() {
+    public Result<List<TagVO>> list() {
         return Result.ok(tagService.listAll());
     }
 }

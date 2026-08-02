@@ -83,6 +83,16 @@ public class ArticleService {
                 attachUserAndTags(result.getRecords()));
     }
 
+    public List<ArticleListItemVO> hot(int size) {
+        List<Article> articles = articleMapper.selectList(
+                Wrappers.<Article>lambdaQuery()
+                        .eq(Article::getStatus, ArticleStatus.PUBLISHED.getValue())
+                        .gt(Article::getViewCount, 0)
+                        .orderByDesc(Article::getViewCount)
+                        .last("LIMIT " + Math.min(size, 20)));
+        return attachUserAndTags(articles);
+    }
+
     public ArticleDetailVO detail(Long id) {
         Article article = articleMapper.selectById(id);
         if (article == null) {

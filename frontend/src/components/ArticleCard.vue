@@ -1,5 +1,6 @@
 <script setup>
 import { avatarSrc } from '../utils/avatar'
+import { formatCount } from '../utils/format'
 
 defineProps({
   article: { type: Object, required: true },
@@ -27,9 +28,9 @@ defineProps({
             {{ article.author?.nickname || article.author?.username }}
           </router-link>
           <span class="date">{{ article.createdAt?.slice(0, 10) }}</span>
-          <span class="stat">浏览 {{ article.viewCount }}</span>
-          <span class="stat">赞 {{ article.likeCount }}</span>
-          <span class="stat">评论 {{ article.commentCount }}</span>
+          <span class="stat">浏览 {{ formatCount(article.viewCount) }}</span>
+          <span class="stat">赞 {{ formatCount(article.likeCount) }}</span>
+          <span class="stat">评论 {{ formatCount(article.commentCount) }}</span>
         </div>
       </div>
       <router-link v-if="article.cover" :to="`/article/${article.id}`" class="cover-link">

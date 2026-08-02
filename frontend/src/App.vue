@@ -1,5 +1,5 @@
 <script setup>
-import { ref } from 'vue'
+import { onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessageBox } from 'element-plus'
 import { useUserStore } from './stores/user'
@@ -8,6 +8,7 @@ import { avatarSrc } from './utils/avatar'
 const store = useUserStore()
 const router = useRouter()
 const keyword = ref('')
+const progress = ref(0)
 
 function search() {
   router.push({ path: '/', query: keyword.value ? { keyword: keyword.value } : {} })
@@ -18,12 +19,22 @@ async function logout() {
   store.logout()
   router.push('/')
 }
+
+function onScroll() {
+  const total = document.documentElement.scrollHeight - window.innerHeight
+  progress.value = total > 0 ? Math.min(100, (window.scrollY / total) * 100) : 0
+}
+
+onMounted(() => window.addEventListener('scroll', onScroll, { passive: true }))
+onBeforeUnmount(() => window.removeEventListener('scroll', onScroll))
 </script>
 
 <template>
+  <div class="reading-progress" :style="{ width: progress + '%' }" />
+
   <header class="app-header">
     <div class="app-header-inner">
-      <router-link to="/" class="logo">blogSys</router-link>
+      <router-link to="/" class="logo">blogSys<em>分享与记录</em></router-link>
       <nav class="nav">
         <router-link to="/">首页</router-link>
         <router-link v-if="store.isLoggedIn" to="/write">写文章</router-link>
@@ -65,6 +76,17 @@ async function logout() {
   </header>
 
   <main class="app-main">
-    <router-view />
+    <router-view v-slot="{ Component }">
+      <transition name="fade-slide" mode="out-in">
+        <component :is="Component" />
+      </transition>
+    </router-view>
   </main>
+
+  <footer class="app-footer">
+    © 2026 blogSys · Spring Boot + Vue 3 ·
+    <router-link to="/" class="footer-link">首页</router-link>
+  </footer>
+
+  <el-backtop :right="28" :bottom="28" />
 </template>

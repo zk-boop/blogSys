@@ -1,10 +1,10 @@
 <script setup>
-import { computed, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { articleApi, commentApi, likeApi } from '../api'
 import { useUserStore } from '../stores/user'
-import { renderMarkdown } from '../utils/markdown'
+import { renderMarkdown, extractToc } from '../utils/markdown'
 import { avatarSrc } from '../utils/avatar'
 import CommentItem from '../components/CommentItem.vue'
 
@@ -20,6 +20,8 @@ const liked = ref(false)
 const likeCount = ref(0)
 const submitting = ref(false)
 const liking = ref(false)
+const toc = ref([])
+const activeToc = ref('')
 
 const rendered = computed(() => renderMarkdown(article.value?.content))
 
@@ -28,6 +30,7 @@ async function loadDetail() {
   article.value = data
   liked.value = data.liked
   likeCount.value = data.likeCount
+  toc.value = extractToc(data.content)
 }
 
 async function loadComments() {
@@ -96,100 +99,145 @@ function loginRequired() {
   return false
 }
 
+function jumpTo(id) {
+  document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+}
+
+function onScroll() {
+  const offset = 120
+  let current = ''
+  for (const item of toc.value) {
+    const el = document.getElementById(item.id)
+    if (el && el.getBoundingClientRect().top <= offset) {
+      current = item.id
+    }
+  }
+  activeToc.value = current
+}
+
 onMounted(() => {
   loadDetail()
   loadComments()
+  window.addEventListener('scroll', onScroll, { passive: true })
 })
+
+onBeforeUnmount(() => window.removeEventListener('scroll', onScroll))
 </script>
 
 <template>
-  <div v-if="article">
-    <el-card class="detail-card" shadow="never">
-      <h1 class="detail-title">{{ article.title }}</h1>
-      <div class="detail-meta">
-        <router-link :to="`/user/${article.author?.id}`" class="author">
-          <el-avatar :size="28" :src="avatarSrc(article.author?.avatar, article.author?.nickname || article.author?.username)" />
-          {{ article.author?.nickname || article.author?.username }}
-        </router-link>
-        <span>{{ article.createdAt?.slice(0, 10) }}</span>
-        <span>浏览 {{ article.viewCount }}</span>
-        <el-tag v-for="tag in article.tags" :key="tag" size="small" effect="plain">{{ tag }}</el-tag>
-        <div class="ops">
-          <el-button v-if="canDeleteArticle" type="danger" link @click="deleteArticle">删除</el-button>
+  <div v-if="article" class="detail-wrap">
+    <div class="detail-main">
+      <el-card class="detail-card" shadow="never">
+        <h1 class="detail-title">{{ article.title }}</h1>
+        <div class="detail-meta">
+          <router-link :to="`/user/${article.author?.id}`" class="author">
+            <el-avatar :size="28" :src="avatarSrc(article.author?.avatar, article.author?.nickname || article.author?.username)" />
+            {{ article.author?.nickname || article.author?.username }}
+          </router-link>
+          <span>{{ article.createdAt?.slice(0, 10) }}</span>
+          <span>浏览 {{ article.viewCount }}</span>
+          <el-tag v-for="tag in article.tags" :key="tag" size="small" effect="plain">{{ tag }}</el-tag>
+          <div class="ops">
+            <el-button v-if="canDeleteArticle" type="danger" link @click="deleteArticle">删除</el-button>
+            <el-button
+              v-if="store.isLoggedIn && article.author?.id === store.user?.id"
+              type="primary"
+              link
+              @click="router.push(`/write/${article.id}`)"
+            >编辑</el-button>
+          </div>
+        </div>
+        <img v-if="article.cover" :src="article.cover" class="detail-cover" alt="cover" />
+        <article class="markdown-body" v-html="rendered" />
+        <div class="like-bar">
           <el-button
-            v-if="store.isLoggedIn && article.author?.id === store.user?.id"
-            type="primary"
-            link
-            @click="router.push(`/write/${article.id}`)"
-          >编辑</el-button>
+            :type="liked ? 'primary' : 'default'"
+            round
+            :loading="liking"
+            @click="toggleLike"
+          >{{ liked ? '已点赞' : '点赞' }} {{ likeCount }}</el-button>
         </div>
-      </div>
-      <img v-if="article.cover" :src="article.cover" class="detail-cover" alt="cover" />
-      <article class="markdown-body" v-html="rendered" />
-      <div class="like-bar">
-        <el-button
-          :type="liked ? 'primary' : 'default'"
-          round
-          :loading="liking"
-          @click="toggleLike"
-        >{{ liked ? '已点赞' : '点赞' }} {{ likeCount }}</el-button>
-      </div>
-    </el-card>
+      </el-card>
 
-    <el-card class="comment-card" shadow="never">
-      <template #header>评论 ({{ article.commentCount }})</template>
-      <div v-if="store.isLoggedIn" class="comment-input">
-        <el-input
-          v-model="commentText"
-          type="textarea"
-          :rows="3"
-          maxlength="1000"
-          show-word-limit
-          placeholder="写下你的评论…"
-        />
-        <div class="comment-submit">
-          <el-button type="primary" :loading="submitting" @click="submitComment">发表评论</el-button>
+      <el-card class="comment-card" shadow="never">
+        <template #header>评论 ({{ article.commentCount }})</template>
+        <div v-if="store.isLoggedIn" class="comment-input">
+          <el-input
+            v-model="commentText"
+            type="textarea"
+            :rows="3"
+            maxlength="1000"
+            show-word-limit
+            placeholder="写下你的评论…"
+          />
+          <div class="comment-submit">
+            <el-button type="primary" :loading="submitting" @click="submitComment">发表评论</el-button>
+          </div>
         </div>
-      </div>
-      <el-empty v-else description="登录后即可评论">
-        <el-button type="primary" @click="router.push('/login')">去登录</el-button>
-      </el-empty>
+        <el-empty v-else description="登录后即可评论">
+          <el-button type="primary" @click="router.push('/login')">去登录</el-button>
+        </el-empty>
 
-      <div v-if="comments.length" class="comment-list">
-        <CommentItem
-          v-for="comment in comments"
-          :key="comment.id"
-          :comment="comment"
-          :can-delete="canDeleteComment(comment)"
-          @delete="deleteComment"
-          @refresh="loadComments"
-        />
+        <div v-if="comments.length" class="comment-list">
+          <CommentItem
+            v-for="comment in comments"
+            :key="comment.id"
+            :comment="comment"
+            :can-delete="canDeleteComment(comment)"
+            @delete="deleteComment"
+            @refresh="loadComments"
+          />
+        </div>
+      </el-card>
+    </div>
+
+    <aside v-if="toc.length > 1" class="toc-side">
+      <div class="toc">
+        <div class="toc-title">目录</div>
+        <a
+          v-for="item in toc"
+          :key="item.id"
+          :class="['toc-item', 'toc-level-' + item.level, { active: activeToc === item.id }]"
+          @click.prevent="jumpTo(item.id)"
+        >{{ item.text }}</a>
       </div>
-    </el-card>
+    </aside>
   </div>
   <el-empty v-else description="文章不存在或已删除" />
 </template>
 
 <style scoped>
+.detail-wrap {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 20px;
+}
+
+.detail-main {
+  min-width: 0;
+  max-width: 860px;
+}
+
 .detail-card {
   border-radius: 8px;
   margin-bottom: 20px;
 }
 
 .detail-title {
-  font-size: 26px;
-  color: #303133;
+  font-size: 28px;
+  color: var(--text-primary);
   margin-bottom: 14px;
+  line-height: 1.35;
 }
 
 .detail-meta {
   display: flex;
   align-items: center;
   gap: 12px;
-  color: #909399;
+  color: var(--text-muted);
   font-size: 14px;
   padding-bottom: 16px;
-  border-bottom: 1px solid #ebeef5;
+  border-bottom: 1px solid var(--border-color);
   flex-wrap: wrap;
 }
 
@@ -197,11 +245,11 @@ onMounted(() => {
   display: flex;
   align-items: center;
   gap: 8px;
-  color: #606266;
+  color: var(--text-secondary);
 }
 
 .author:hover {
-  color: #409eff;
+  color: var(--brand-color);
 }
 
 .ops {
@@ -214,20 +262,20 @@ onMounted(() => {
   width: 100%;
   aspect-ratio: 16 / 9;
   object-fit: cover;
-  border-radius: 8px;
-  margin: 16px 0 4px;
+  margin: 16px 0 8px;
 }
 
 .markdown-body {
-  padding: 20px 4px;
+  padding: 8px 0;
   line-height: 1.75;
-  font-size: 15px;
+  font-size: 15.5px;
 }
 
 .like-bar {
   display: flex;
   justify-content: center;
-  padding-top: 8px;
+  padding-top: 20px;
+  border-top: 1px solid var(--border-color);
 }
 
 .comment-card {
@@ -245,64 +293,72 @@ onMounted(() => {
 }
 
 .comment-list {
-  border-top: 1px solid #ebeef5;
-}
-</style>
-
-<style>
-.markdown-body h1,
-.markdown-body h2,
-.markdown-body h3 {
-  margin: 1.2em 0 0.6em;
-  color: #303133;
+  border-top: 1px solid var(--border-color);
 }
 
-.markdown-body p {
-  margin: 0.8em 0;
+.toc-side {
+  display: none;
 }
 
-.markdown-body code {
-  background: #f0f2f5;
-  padding: 2px 6px;
-  border-radius: 4px;
-  font-size: 13px;
-}
+@media (min-width: 1280px) {
+  .detail-wrap {
+    grid-template-columns: minmax(0, 1fr) 220px;
+  }
 
-.markdown-body pre {
-  background: #282c34;
-  color: #abb2bf;
-  padding: 14px 16px;
-  border-radius: 8px;
-  overflow-x: auto;
-  margin: 1em 0;
-}
+  .toc-side {
+    display: block;
+  }
 
-.markdown-body pre code {
-  background: transparent;
-  padding: 0;
-  color: inherit;
-}
+  .toc {
+    position: sticky;
+    top: 80px;
+    max-height: calc(100vh - 100px);
+    overflow-y: auto;
+    background: var(--card-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 14px;
+  }
 
-.markdown-body blockquote {
-  border-left: 4px solid #409eff;
-  background: #f0f7ff;
-  margin: 1em 0;
-  padding: 8px 14px;
-  color: #606266;
-}
+  .toc-title {
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 10px;
+    font-size: 14px;
+  }
 
-.markdown-body img {
-  max-width: 100%;
-}
+  .toc-item {
+    display: block;
+    padding: 4px 8px;
+    font-size: 13px;
+    color: var(--text-secondary);
+    border-radius: 4px;
+    cursor: pointer;
+    line-height: 1.5;
+    margin-bottom: 2px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
 
-.markdown-body table {
-  border-collapse: collapse;
-  margin: 1em 0;
-}
+  .toc-item:hover {
+    color: var(--brand-color);
+    background: #f2f6ff;
+  }
 
-.markdown-body th,
-.markdown-body td {
-  border: 1px solid #dcdfe6;
-  padding: 8px 12px;
+  .toc-item.active {
+    color: var(--brand-color);
+    background: #e8effd;
+    font-weight: 600;
+  }
+
+  .toc-level-2 {
+    padding-left: 16px;
+  }
+
+  .toc-level-3 {
+    padding-left: 28px;
+    font-size: 12px;
+  }
 }
 </style>
