@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { articleApi, uploadApi } from '../api'
 import { renderMarkdown } from '../utils/markdown'
+import ImageCropUpload from '../components/ImageCropUpload.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -15,7 +16,6 @@ const saving = ref(false)
 const uploading = ref(false)
 const contentInputRef = ref()
 const fileInputRef = ref()
-const coverInputRef = ref()
 
 const form = reactive({
   title: '',
@@ -82,10 +82,6 @@ function triggerImagePick() {
   fileInputRef.value?.click()
 }
 
-function triggerCoverPick() {
-  coverInputRef.value?.click()
-}
-
 async function onImagePicked(event) {
   const file = event.target.files?.[0]
   event.target.value = ''
@@ -103,22 +99,9 @@ async function onImagePicked(event) {
   }
 }
 
-async function onCoverPicked(event) {
-  const file = event.target.files?.[0]
-  event.target.value = ''
-  if (!file) return
-  if (!file.type.startsWith('image/')) {
-    ElMessage.warning('请选择图片文件')
-    return
-  }
-  uploading.value = true
-  try {
-    const data = await uploadApi.image(file, 'cover')
-    form.cover = data.url
-    ElMessage.success('封面已上传')
-  } finally {
-    uploading.value = false
-  }
+async function onCoverUploaded(data) {
+  form.cover = data.url
+  ElMessage.success('封面已上传')
 }
 
 function insertMarkdown(text) {
@@ -162,18 +145,20 @@ onMounted(loadArticle)
       </el-form-item>
       <el-form-item label="封面">
         <div class="cover-row">
-          <el-input v-model="form.cover" placeholder="封面图片 URL,或上传一张">
-            <template #append>
-              <el-button :loading="uploading" @click="triggerCoverPick">上传封面</el-button>
-            </template>
-          </el-input>
-          <input
-            ref="coverInputRef"
-            type="file"
-            accept="image/*"
-            class="hidden-input"
-            @change="onCoverPicked"
-          />
+          <div class="cover-input-row">
+            <el-input v-model="form.cover" placeholder="封面图片 URL,或上传后自动填充">
+              <template #append>
+                <ImageCropUpload
+                  button-text="上传裁剪"
+                  :aspect-ratio="16 / 9"
+                  :output-width="1280"
+                  :output-height="720"
+                  upload-type="cover"
+                  @uploaded="onCoverUploaded"
+                />
+              </template>
+            </el-input>
+          </div>
           <img v-if="form.cover" :src="form.cover" class="cover-preview" alt="cover" />
         </div>
       </el-form-item>
@@ -238,12 +223,15 @@ onMounted(loadArticle)
   flex-direction: column;
 }
 
-.cover-row .el-input {
+.cover-input-row {
   width: 100%;
 }
 
 .cover-preview {
-  max-height: 180px;
+  width: 100%;
+  max-width: 480px;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
   border-radius: 6px;
 }
 

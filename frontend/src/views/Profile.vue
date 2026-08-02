@@ -4,7 +4,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { articleApi, authApi } from '../api'
 import { useUserStore } from '../stores/user'
 import ArticleCard from '../components/ArticleCard.vue'
-import AvatarUpload from '../components/AvatarUpload.vue'
+import ImageCropUpload from '../components/ImageCropUpload.vue'
 
 const store = useUserStore()
 
@@ -30,10 +30,6 @@ async function saveProfile() {
   }
 }
 
-function onAvatarUploaded(url) {
-  profileForm.avatar = url
-}
-
 async function loadMyArticles() {
   const data = await articleApi.myArticles({ page: page.value, size: size.value })
   myArticles.value = data.records
@@ -57,7 +53,14 @@ onMounted(loadMyArticles)
       <div class="avatar-box">
         <el-avatar :size="72" :src="profileForm.avatar" />
         <span class="username">@{{ store.user?.username }}</span>
-        <AvatarUpload @uploaded="onAvatarUploaded" />
+        <ImageCropUpload
+          button-text="上传头像"
+          :aspect-ratio="1"
+          :output-width="256"
+          :output-height="256"
+          upload-type="avatar"
+          @uploaded="(data) => (profileForm.avatar = data.url)"
+        />
       </div>
       <el-form label-position="top">
         <el-form-item label="昵称">

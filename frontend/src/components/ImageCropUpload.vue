@@ -4,6 +4,13 @@ import Cropper from 'cropperjs'
 import { ElMessage } from 'element-plus'
 import { uploadApi } from '../api'
 
+const props = defineProps({
+  buttonText: { type: String, default: '上传图片' },
+  aspectRatio: { type: Number, required: true },
+  outputWidth: { type: Number, required: true },
+  outputHeight: { type: Number, required: true },
+  uploadType: { type: String, required: true },
+})
 const emit = defineEmits(['uploaded'])
 
 const fileInputRef = ref()
@@ -35,9 +42,9 @@ function openCropper(file) {
     img.onload = () => {
       cropper.value?.destroy()
       cropper.value = new Cropper(img, {
-        aspectRatio: 1,
+        aspectRatio: props.aspectRatio,
         viewMode: 1,
-        autoCropArea: 0.8,
+        autoCropArea: 0.9,
         background: false,
       })
     }
@@ -48,21 +55,21 @@ function openCropper(file) {
 async function confirmCrop() {
   if (!cropper.value) return
   const canvas = cropper.value.getCroppedCanvas({
-    width: 256,
-    height: 256,
+    width: props.outputWidth,
+    height: props.outputHeight,
     imageSmoothingQuality: 'high',
   })
-  const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png'))
+  const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.92))
   if (!blob) {
     ElMessage.error('图片处理失败')
     return
   }
   uploading.value = true
   try {
-    const data = await uploadApi.image(blob, 'avatar')
-    emit('uploaded', data.url)
+    const data = await uploadApi.image(blob, props.uploadType)
+    emit('uploaded', data)
     dialogVisible.value = false
-    ElMessage.success('头像已上传,记得保存资料')
+    ElMessage.success('图片已上传')
   } finally {
     uploading.value = false
     cropper.value?.destroy()
@@ -78,8 +85,8 @@ function cancel() {
 </script>
 
 <template>
-  <div>
-    <el-button size="small" :loading="uploading" @click="pickFile">上传头像</el-button>
+  <div class="crop-upload">
+    <el-button size="small" :loading="uploading" @click="pickFile">{{ buttonText }}</el-button>
     <input
       ref="fileInputRef"
       type="file"
@@ -90,14 +97,16 @@ function cancel() {
 
     <el-dialog
       v-model="dialogVisible"
-      title="裁剪头像"
-      width="420px"
+      :title="`裁剪图片 (${aspectRatio === 1 ? '1:1' : '16:9'})`"
+      width="860px"
+      top="6vh"
       :close-on-click-modal="false"
       @closed="cancel"
     >
       <div class="cropper-wrap">
         <img ref="cropImageRef" alt="crop" />
       </div>
+      <div class="crop-tip">拖动选框调整位置,拖动角落手柄调整大小,比例已锁定</div>
       <template #footer>
         <el-button @click="cancel">取消</el-button>
         <el-button type="primary" :loading="uploading" @click="confirmCrop">确定</el-button>
@@ -112,13 +121,18 @@ function cancel() {
 }
 
 .cropper-wrap {
-  max-height: 420px;
-  display: flex;
-  justify-content: center;
+  height: 70vh;
+  overflow: auto;
 }
 
 .cropper-wrap img {
   display: block;
-  max-width: 100%;
+  max-width: none;
+}
+
+.crop-tip {
+  margin-top: 8px;
+  font-size: 12px;
+  color: #909399;
 }
 </style>
