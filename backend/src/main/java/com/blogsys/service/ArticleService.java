@@ -49,8 +49,11 @@ public class ArticleService {
     private final LikeMapper likeMapper;
     private final UserService userService;
 
-    public PageResult<ArticleListItemVO> page(long page, long size, Long tagId) {
+    public PageResult<ArticleListItemVO> page(long page, long size, Long tagId, String keyword) {
         Page<Article> result;
+        var wrapper = Wrappers.<Article>lambdaQuery()
+                .eq(Article::getStatus, ArticleStatus.PUBLISHED.getValue())
+                .orderByDesc(Article::getCreatedAt);
         if (tagId != null) {
             List<Long> articleIds = articleTagMapper.selectList(
                             Wrappers.<ArticleTag>lambdaQuery().eq(ArticleTag::getTagId, tagId))
@@ -58,35 +61,38 @@ public class ArticleService {
             if (articleIds.isEmpty()) {
                 return new PageResult<>(0, page, size, new ArrayList<>());
             }
-            result = articleMapper.selectPage(new Page<>(page, size),
-                    Wrappers.<Article>lambdaQuery()
-                            .eq(Article::getStatus, ArticleStatus.PUBLISHED.getValue())
-                            .in(Article::getId, articleIds)
-                            .orderByDesc(Article::getCreatedAt));
-        } else {
-            result = articleMapper.selectPage(new Page<>(page, size),
-                    Wrappers.<Article>lambdaQuery()
-                            .eq(Article::getStatus, ArticleStatus.PUBLISHED.getValue())
-                            .orderByDesc(Article::getCreatedAt));
+            wrapper.in(Article::getId, articleIds);
         }
+        if (StringUtils.hasText(keyword)) {
+            String kw = escapeLike(keyword);
+            wrapper.and(w -> w.like(Article::getTitle, kw).or().like(Article::getContent, kw));
+        }
+        result = articleMapper.selectPage(new Page<>(page, size), wrapper);
         return new PageResult<>(result.getTotal(), result.getCurrent(), result.getSize(),
                 attachUserAndTags(result.getRecords()));
     }
 
-    public PageResult<ArticleListItemVO> pageByUser(long page, long size, Long userId) {
+    public PageResult<ArticleListItemVO> pageByUser(long page, long size, Long userId, Integer status) {
         Page<Article> result = articleMapper.selectPage(new Page<>(page, size),
                 Wrappers.<Article>lambdaQuery()
                         .eq(Article::getUserId, userId)
-                        .eq(Article::getStatus, ArticleStatus.PUBLISHED.getValue())
+                        .eq(status != null, Article::getStatus, status)
                         .orderByDesc(Article::getCreatedAt));
         return new PageResult<>(result.getTotal(), result.getCurrent(), result.getSize(),
                 attachUserAndTags(result.getRecords()));
     }
 
     public ArticleDetailVO detail(Long id) {
-        Article article = requirePublished(id);
-        articleMapper.incrViewCount(id);
-        article.setViewCount(article.getViewCount() + 1);
+        Article article = articleMapper.selectById(id);
+        if (article == null) {
+            throw new BizException(404, "文章不存在");
+        }
+        if (article.getStatus() == ArticleStatus.DRAFT.getValue()) {
+            SecurityUtil.requireOwnerOrAdmin(article.getUserId());
+        } else {
+            articleMapper.incrViewCount(id);
+            article.setViewCount(article.getViewCount() + 1);
+        }
 
         ArticleDetailVO vo = new ArticleDetailVO();
         copyBase(article, vo);
@@ -111,7 +117,7 @@ public class ArticleService {
         Article article = new Article();
         article.setUserId(userId);
         applyRequest(article, request);
-        article.setStatus(ArticleStatus.PUBLISHED.getValue());
+        article.setStatus(resolveStatus(request));
         article.setViewCount(0);
         article.setLikeCount(0);
         article.setCommentCount(0);
@@ -124,6 +130,7 @@ public class ArticleService {
     public void update(Long id, ArticleRequest request) {
         Article article = requireOwnArticle(id);
         applyRequest(article, request);
+        article.setStatus(resolveStatus(request));
         articleMapper.updateById(article);
         syncTags(id, request.getTagNames());
     }
@@ -145,14 +152,6 @@ public class ArticleService {
                 .collect(Collectors.toMap(Article::getId, Function.identity()));
     }
 
-    private Article requirePublished(Long id) {
-        Article article = articleMapper.selectById(id);
-        if (article == null || article.getStatus() != ArticleStatus.PUBLISHED.getValue()) {
-            throw new BizException(404, "文章不存在");
-        }
-        return article;
-    }
-
     private Article requireOwnArticle(Long id) {
         Article article = articleMapper.selectById(id);
         if (article == null) {
@@ -162,10 +161,21 @@ public class ArticleService {
         return article;
     }
 
+    private int resolveStatus(ArticleRequest request) {
+        return Boolean.TRUE.equals(request.getDraft())
+                ? ArticleStatus.DRAFT.getValue()
+                : ArticleStatus.PUBLISHED.getValue();
+    }
+
     private void applyRequest(Article article, ArticleRequest request) {
         article.setTitle(request.getTitle());
         article.setContent(request.getContent());
         article.setSummary(StringUtils.hasText(request.getSummary()) ? request.getSummary() : "");
+        article.setCover(StringUtils.hasText(request.getCover()) ? request.getCover() : "");
+    }
+
+    private String escapeLike(String keyword) {
+        return keyword.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_");
     }
 
     private void syncTags(Long articleId, List<String> tagNames) {
@@ -264,6 +274,8 @@ public class ArticleService {
         vo.setId(article.getId());
         vo.setTitle(article.getTitle());
         vo.setSummary(article.getSummary());
+        vo.setCover(article.getCover());
+        vo.setStatus(article.getStatus());
         vo.setViewCount(article.getViewCount());
         vo.setLikeCount(article.getLikeCount());
         vo.setCommentCount(article.getCommentCount());

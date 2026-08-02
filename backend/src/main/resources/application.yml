@@ -3,6 +3,10 @@ spring:
     name: blogsys-backend
   profiles:
     active: local
+  servlet:
+    multipart:
+      max-file-size: 5MB
+      max-request-size: 6MB
 
 server:
   port: 8080
@@ -18,3 +22,5 @@ blogsys:
   jwt:
     secret: blogsys-dev-secret-key-please-change-in-production-0123456789
     expire-hours: 72
+  upload:
+    dir: uploads

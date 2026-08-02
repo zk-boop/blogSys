@@ -29,8 +29,9 @@ public class ArticleController {
     public Result<PageResult<ArticleListItemVO>> page(
             @RequestParam(defaultValue = "1") long page,
             @RequestParam(defaultValue = "10") long size,
-            @RequestParam(required = false) Long tagId) {
-        return Result.ok(articleService.page(page, size, tagId));
+            @RequestParam(required = false) Long tagId,
+            @RequestParam(required = false) String keyword) {
+        return Result.ok(articleService.page(page, size, tagId, keyword));
     }
 
     @GetMapping("/{id}")

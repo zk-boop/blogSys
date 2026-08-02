@@ -62,6 +62,46 @@ class CommentServiceTest {
     }
 
     @Test
+    void createReply_shouldHoistToTopLevel_whenReplyingToReply() {
+        Article article = new Article();
+        article.setId(10L);
+        article.setStatus(1);
+        when(articleMapper.selectById(10L)).thenReturn(article);
+
+        Comment topLevel = new Comment();
+        topLevel.setId(1L);
+        topLevel.setArticleId(10L);
+        topLevel.setParentId(null);
+        Comment nestedReply = new Comment();
+        nestedReply.setId(2L);
+        nestedReply.setArticleId(10L);
+        nestedReply.setParentId(1L);
+        when(commentMapper.selectById(2L)).thenReturn(nestedReply);
+
+        CommentRequest request = new CommentRequest();
+        request.setContent("回复回复");
+        request.setParentId(2L);
+        CommentVO vo = commentService.create(10L, request);
+
+        assertEquals(1L, vo.getParentId());
+    }
+
+    @Test
+    void createReply_shouldFail_whenParentNotInArticle() {
+        Article article = new Article();
+        article.setId(10L);
+        article.setStatus(1);
+        when(articleMapper.selectById(10L)).thenReturn(article);
+        when(commentMapper.selectById(99L)).thenReturn(null);
+
+        CommentRequest request = new CommentRequest();
+        request.setContent("x");
+        request.setParentId(99L);
+
+        assertThrows(BizException.class, () -> commentService.create(10L, request));
+    }
+
+    @Test
     void create_shouldFail_whenArticleNotExists() {
         when(articleMapper.selectById(10L)).thenReturn(null);
 

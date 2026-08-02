@@ -61,6 +61,11 @@ a {
   gap: 8px;
 }
 
+.search-box {
+  width: 240px;
+  margin-left: auto;
+}
+
 .user-info {
   display: flex;
   align-items: center;

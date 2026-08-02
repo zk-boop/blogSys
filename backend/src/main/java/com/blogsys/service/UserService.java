@@ -1,9 +1,12 @@
 package com.blogsys.service;
 
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
+import com.blogsys.common.ArticleStatus;
 import com.blogsys.common.BizException;
 import com.blogsys.dto.UpdateProfileRequest;
+import com.blogsys.entity.Article;
 import com.blogsys.entity.User;
+import com.blogsys.mapper.ArticleMapper;
 import com.blogsys.mapper.UserMapper;
 import com.blogsys.security.SecurityUtil;
 import com.blogsys.vo.UserVO;
@@ -21,6 +24,7 @@ import java.util.stream.Collectors;
 public class UserService {
 
     private final UserMapper userMapper;
+    private final ArticleMapper articleMapper;
 
     public UserVO updateProfile(UpdateProfileRequest request) {
         Long userId = SecurityUtil.currentUserId();
@@ -36,6 +40,18 @@ public class UserService {
         }
         userMapper.updateById(user);
         return AuthService.toVO(user);
+    }
+
+    public UserVO publicProfile(Long userId) {
+        User user = userMapper.selectById(userId);
+        if (user == null) {
+            throw new BizException(404, "用户不存在");
+        }
+        UserVO vo = AuthService.toVO(user);
+        vo.setArticleCount(articleMapper.selectCount(Wrappers.<Article>lambdaQuery()
+                .eq(Article::getUserId, userId)
+                .eq(Article::getStatus, ArticleStatus.PUBLISHED.getValue())));
+        return vo;
     }
 
     public Map<Long, User> findByIds(List<Long> ids) {

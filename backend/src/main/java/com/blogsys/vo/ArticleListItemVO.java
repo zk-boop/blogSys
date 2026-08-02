@@ -11,6 +11,8 @@ public class ArticleListItemVO {
     private Long id;
     private String title;
     private String summary;
+    private String cover;
+    private Integer status;
     private Integer viewCount;
     private Integer likeCount;
     private Integer commentCount;

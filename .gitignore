@@ -23,5 +23,8 @@ Thumbs.db
 # Logs
 *.log
 
+# Uploaded images
+backend/uploads/
+
 # Local config with credentials
 backend/src/main/resources/application-local.yml

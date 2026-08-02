@@ -2,7 +2,7 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { articleApi } from '../api'
+import { articleApi, uploadApi } from '../api'
 import { renderMarkdown } from '../utils/markdown'
 
 const route = useRoute()
@@ -11,9 +11,15 @@ const router = useRouter()
 const isEdit = computed(() => !!route.params.id)
 const formRef = ref()
 const saving = ref(false)
+const uploading = ref(false)
+const contentInputRef = ref()
+const fileInputRef = ref()
+const coverInputRef = ref()
+
 const form = reactive({
   title: '',
   summary: '',
+  cover: '',
   tagNames: [],
   content: '',
 })
@@ -30,31 +36,102 @@ async function loadArticle() {
   const data = await articleApi.editDetail(route.params.id)
   form.title = data.title
   form.summary = data.summary
+  form.cover = data.cover
   form.tagNames = data.tags
   form.content = data.content
 }
 
-async function save() {
+function payload(draft) {
+  return {
+    title: form.title,
+    summary: form.summary,
+    cover: form.cover,
+    tagNames: form.tagNames,
+    content: form.content,
+    draft,
+  }
+}
+
+async function save(draft) {
   await formRef.value.validate()
   saving.value = true
   try {
-    const payload = {
-      title: form.title,
-      summary: form.summary,
-      tagNames: form.tagNames,
-      content: form.content,
-    }
     if (isEdit.value) {
-      await articleApi.update(route.params.id, payload)
-      ElMessage.success('已保存')
-      router.push(`/article/${route.params.id}`)
+      await articleApi.update(route.params.id, payload(draft))
+      ElMessage.success(draft ? '草稿已保存' : '已发布')
+      if (!draft) {
+        router.push(`/article/${route.params.id}`)
+      }
     } else {
-      const id = await articleApi.create(payload)
-      ElMessage.success('发布成功')
-      router.push(`/article/${id}`)
+      const id = await articleApi.create(payload(draft))
+      ElMessage.success(draft ? '草稿已保存' : '发布成功')
+      if (!draft) {
+        router.push(`/article/${id}`)
+      } else {
+        router.replace(`/write/${id}`)
+      }
     }
   } finally {
     saving.value = false
+  }
+}
+
+function triggerImagePick() {
+  fileInputRef.value?.click()
+}
+
+function triggerCoverPick() {
+  coverInputRef.value?.click()
+}
+
+async function onImagePicked(event) {
+  const file = event.target.files?.[0]
+  event.target.value = ''
+  if (!file) return
+  if (!file.type.startsWith('image/')) {
+    ElMessage.warning('请选择图片文件')
+    return
+  }
+  uploading.value = true
+  try {
+    const data = await uploadApi.image(file)
+    insertMarkdown(`![${file.name}](${data.url})`)
+  } finally {
+    uploading.value = false
+  }
+}
+
+async function onCoverPicked(event) {
+  const file = event.target.files?.[0]
+  event.target.value = ''
+  if (!file) return
+  if (!file.type.startsWith('image/')) {
+    ElMessage.warning('请选择图片文件')
+    return
+  }
+  uploading.value = true
+  try {
+    const data = await uploadApi.image(file)
+    form.cover = data.url
+    ElMessage.success('封面已上传')
+  } finally {
+    uploading.value = false
+  }
+}
+
+function insertMarkdown(text) {
+  const textarea = contentInputRef.value?.textarea
+  if (textarea && typeof textarea.selectionStart === 'number') {
+    const start = textarea.selectionStart
+    const end = textarea.selectionEnd
+    form.content = form.content.slice(0, start) + text + form.content.slice(end)
+    requestAnimationFrame(() => {
+      const pos = start + text.length
+      textarea.setSelectionRange(pos, pos)
+      textarea.focus()
+    })
+  } else {
+    form.content += text
   }
 }
 
@@ -81,6 +158,23 @@ onMounted(loadArticle)
           <el-option v-for="tag in form.tagNames" :key="tag" :label="tag" :value="tag" />
         </el-select>
       </el-form-item>
+      <el-form-item label="封面">
+        <div class="cover-row">
+          <el-input v-model="form.cover" placeholder="封面图片 URL,或上传一张">
+            <template #append>
+              <el-button :loading="uploading" @click="triggerCoverPick">上传封面</el-button>
+            </template>
+          </el-input>
+          <input
+            ref="coverInputRef"
+            type="file"
+            accept="image/*"
+            class="hidden-input"
+            @change="onCoverPicked"
+          />
+          <img v-if="form.cover" :src="form.cover" class="cover-preview" alt="cover" />
+        </div>
+      </el-form-item>
       <el-form-item label="摘要">
         <el-input
           v-model="form.summary"
@@ -88,12 +182,23 @@ onMounted(loadArticle)
           :rows="2"
           maxlength="500"
           show-word-limit
-          placeholder="文章摘要(可选),留空则列表页显示暂无摘要"
+          placeholder="文章摘要(可选)"
         />
       </el-form-item>
       <el-form-item label="内容 (Markdown)" prop="content">
+        <div class="editor-toolbar">
+          <el-button size="small" :loading="uploading" @click="triggerImagePick">插入图片</el-button>
+          <input
+            ref="fileInputRef"
+            type="file"
+            accept="image/*"
+            class="hidden-input"
+            @change="onImagePicked"
+          />
+        </div>
         <div class="editor">
           <el-input
+            ref="contentInputRef"
             v-model="form.content"
             type="textarea"
             :rows="18"
@@ -105,7 +210,9 @@ onMounted(loadArticle)
       </el-form-item>
       <div class="actions">
         <el-button @click="router.back()">取消</el-button>
-        <el-button type="primary" :loading="saving" @click="save">{{ isEdit ? '保存' : '发布' }}</el-button>
+        <el-button v-if="isEdit" @click="save(true)">保存草稿</el-button>
+        <el-button v-else type="info" plain :loading="saving" @click="save(true)">保存草稿</el-button>
+        <el-button type="primary" :loading="saving" @click="save(false)">{{ isEdit ? '发布' : '发布文章' }}</el-button>
       </div>
     </el-form>
   </el-card>
@@ -119,6 +226,31 @@ onMounted(loadArticle)
 .write-title {
   margin-bottom: 16px;
   font-size: 20px;
+}
+
+.cover-row {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  width: 100%;
+  flex-direction: column;
+}
+
+.cover-row .el-input {
+  width: 100%;
+}
+
+.cover-preview {
+  max-height: 180px;
+  border-radius: 6px;
+}
+
+.hidden-input {
+  display: none;
+}
+
+.editor-toolbar {
+  margin-bottom: 8px;
 }
 
 .editor {

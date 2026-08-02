@@ -12,6 +12,7 @@ import com.blogsys.vo.UserVO;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -41,6 +42,19 @@ public class UserController {
     public Result<PageResult<ArticleListItemVO>> myArticles(
             @RequestParam(defaultValue = "1") long page,
             @RequestParam(defaultValue = "10") long size) {
-        return Result.ok(articleService.pageByUser(page, size, SecurityUtil.currentUserId()));
+        return Result.ok(articleService.pageByUser(page, size, SecurityUtil.currentUserId(), null));
+    }
+
+    @GetMapping("/{id}")
+    public Result<UserVO> profile(@PathVariable Long id) {
+        return Result.ok(userService.publicProfile(id));
+    }
+
+    @GetMapping("/{id}/articles")
+    public Result<PageResult<ArticleListItemVO>> userArticles(
+            @PathVariable Long id,
+            @RequestParam(defaultValue = "1") long page,
+            @RequestParam(defaultValue = "10") long size) {
+        return Result.ok(articleService.pageByUser(page, size, id, com.blogsys.common.ArticleStatus.PUBLISHED.getValue()));
     }
 }

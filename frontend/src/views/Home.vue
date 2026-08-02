@@ -1,7 +1,11 @@
 <script setup>
 import { onMounted, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { articleApi, tagApi } from '../api'
 import ArticleCard from '../components/ArticleCard.vue'
+
+const route = useRoute()
+const router = useRouter()
 
 const articles = ref([])
 const tags = ref([])
@@ -11,6 +15,17 @@ const size = ref(10)
 const activeTag = ref(null)
 const loading = ref(false)
 
+const keyword = ref(route.query.keyword || '')
+
+watch(
+  () => route.query.keyword,
+  (value) => {
+    keyword.value = value || ''
+    page.value = 1
+    loadArticles()
+  }
+)
+
 async function loadTags() {
   tags.value = await tagApi.list()
 }
@@ -18,7 +33,12 @@ async function loadTags() {
 async function loadArticles() {
   loading.value = true
   try {
-    const data = await articleApi.page({ page: page.value, size: size.value, tagId: activeTag.value || undefined })
+    const data = await articleApi.page({
+      page: page.value,
+      size: size.value,
+      tagId: activeTag.value || undefined,
+      keyword: keyword.value || undefined,
+    })
     articles.value = data.records
     total.value = data.total
   } finally {
@@ -33,6 +53,10 @@ function selectTag(tagId) {
   page.value = 1
 }
 
+function clearKeyword() {
+  router.push({ path: '/', query: {} })
+}
+
 onMounted(() => {
   loadTags()
   loadArticles()
@@ -41,6 +65,11 @@ onMounted(() => {
 
 <template>
   <div>
+    <div v-if="keyword" class="search-bar">
+      <el-tag closable type="primary" @close="clearKeyword">搜索:{{ keyword }}</el-tag>
+      <span class="search-hint">共 {{ total }} 条结果</span>
+    </div>
+
     <div class="tag-bar">
       <el-tag
         :type="activeTag === null ? 'primary' : 'info'"
@@ -60,7 +89,7 @@ onMounted(() => {
       <template v-if="articles.length">
         <ArticleCard v-for="article in articles" :key="article.id" :article="article" />
       </template>
-      <el-empty v-else description="还没有文章,快来写第一篇吧" />
+      <el-empty v-else :description="keyword ? '没有找到相关文章' : '还没有文章,快来写第一篇吧'" />
     </div>
 
     <div class="pagination">
@@ -76,6 +105,18 @@ onMounted(() => {
 </template>
 
 <style scoped>
+.search-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.search-hint {
+  color: #909399;
+  font-size: 13px;
+}
+
 .tag-bar {
   display: flex;
   gap: 8px;

@@ -19,5 +19,10 @@ public class ArticleRequest {
     @Size(max = 500, message = "摘要最长500个字符")
     private String summary;
 
+    @Size(max = 255, message = "封面 URL 最长255个字符")
+    private String cover;
+
+    private Boolean draft;
+
     private List<String> tagNames;
 }

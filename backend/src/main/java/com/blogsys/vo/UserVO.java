@@ -1,5 +1,6 @@
 package com.blogsys.vo;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import lombok.Data;
 
 import java.time.LocalDateTime;
@@ -13,4 +14,7 @@ public class UserVO {
     private String avatar;
     private String role;
     private LocalDateTime createdAt;
+
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    private Long articleCount;
 }

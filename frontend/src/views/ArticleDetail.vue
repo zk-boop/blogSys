@@ -5,6 +5,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { articleApi, commentApi, likeApi } from '../api'
 import { useUserStore } from '../stores/user'
 import { renderMarkdown } from '../utils/markdown'
+import CommentItem from '../components/CommentItem.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -73,7 +74,7 @@ async function deleteArticle() {
 }
 
 async function deleteComment(id) {
-  await ElMessageBox.confirm('确定删除这条评论吗?', '删除评论', { type: 'warning' })
+  await ElMessageBox.confirm('确定删除这条评论吗?其下回复将一并删除。', '删除评论', { type: 'warning' })
   await commentApi.remove(id)
   ElMessage.success('已删除')
   await loadComments()
@@ -83,6 +84,16 @@ async function deleteComment(id) {
 const canDeleteArticle = computed(
   () => store.isLoggedIn && (store.isAdmin || article.value?.author?.id === store.user?.id)
 )
+
+const canDeleteComment = (comment) =>
+  store.isLoggedIn && (store.isAdmin || comment.user?.id === store.user?.id)
+
+function loginRequired() {
+  if (store.isLoggedIn) return true
+  ElMessage.warning('请先登录')
+  router.push('/login')
+  return false
+}
 
 onMounted(() => {
   loadDetail()
@@ -95,8 +106,10 @@ onMounted(() => {
     <el-card class="detail-card" shadow="never">
       <h1 class="detail-title">{{ article.title }}</h1>
       <div class="detail-meta">
-        <el-avatar :size="28" :src="article.author?.avatar" />
-        <span>{{ article.author?.nickname || article.author?.username }}</span>
+        <router-link :to="`/user/${article.author?.id}`" class="author">
+          <el-avatar :size="28" :src="article.author?.avatar" />
+          {{ article.author?.nickname || article.author?.username }}
+        </router-link>
         <span>{{ article.createdAt?.slice(0, 10) }}</span>
         <span>浏览 {{ article.viewCount }}</span>
         <el-tag v-for="tag in article.tags" :key="tag" size="small" effect="plain">{{ tag }}</el-tag>
@@ -110,6 +123,7 @@ onMounted(() => {
           >编辑</el-button>
         </div>
       </div>
+      <img v-if="article.cover" :src="article.cover" class="detail-cover" alt="cover" />
       <article class="markdown-body" v-html="rendered" />
       <div class="like-bar">
         <el-button
@@ -141,23 +155,14 @@ onMounted(() => {
       </el-empty>
 
       <div v-if="comments.length" class="comment-list">
-        <div v-for="comment in comments" :key="comment.id" class="comment-item">
-          <el-avatar :size="32" :src="comment.user?.avatar" />
-          <div class="comment-body">
-            <div class="comment-head">
-              <span class="comment-author">{{ comment.user?.nickname || comment.user?.username }}</span>
-              <span class="comment-date">{{ comment.createdAt?.slice(0, 10) }}</span>
-              <el-button
-                v-if="store.isLoggedIn && (store.isAdmin || comment.user?.id === store.user?.id)"
-                class="comment-del"
-                type="danger"
-                link
-                @click="deleteComment(comment.id)"
-              >删除</el-button>
-            </div>
-            <p class="comment-content">{{ comment.content }}</p>
-          </div>
-        </div>
+        <CommentItem
+          v-for="comment in comments"
+          :key="comment.id"
+          :comment="comment"
+          :can-delete="canDeleteComment(comment)"
+          @delete="deleteComment"
+          @refresh="loadComments"
+        />
       </div>
     </el-card>
   </div>
@@ -187,10 +192,29 @@ onMounted(() => {
   flex-wrap: wrap;
 }
 
+.author {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #606266;
+}
+
+.author:hover {
+  color: #409eff;
+}
+
 .ops {
   margin-left: auto;
   display: flex;
   gap: 4px;
+}
+
+.detail-cover {
+  width: 100%;
+  max-height: 320px;
+  object-fit: cover;
+  border-radius: 8px;
+  margin: 16px 0 4px;
 }
 
 .markdown-body {
@@ -221,44 +245,6 @@ onMounted(() => {
 
 .comment-list {
   border-top: 1px solid #ebeef5;
-}
-
-.comment-item {
-  display: flex;
-  gap: 12px;
-  padding: 14px 0;
-  border-bottom: 1px solid #f0f2f5;
-}
-
-.comment-body {
-  flex: 1;
-}
-
-.comment-head {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.comment-author {
-  font-weight: 600;
-  font-size: 14px;
-}
-
-.comment-date {
-  color: #909399;
-  font-size: 12px;
-}
-
-.comment-del {
-  margin-left: auto;
-}
-
-.comment-content {
-  margin-top: 6px;
-  line-height: 1.6;
-  color: #303133;
-  white-space: pre-wrap;
 }
 </style>
 

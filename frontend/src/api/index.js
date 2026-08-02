@@ -7,6 +7,11 @@ export const authApi = {
   updateProfile: (data) => http.put('/users/me', data),
 }
 
+export const userApi = {
+  profile: (id) => http.get(`/users/${id}`),
+  articles: (id, params) => http.get(`/users/${id}/articles`, { params }),
+}
+
 export const articleApi = {
   page: (params) => http.get('/articles', { params }),
   detail: (id) => http.get(`/articles/${id}`),
@@ -29,4 +34,12 @@ export const likeApi = {
 
 export const tagApi = {
   list: () => http.get('/tags'),
+}
+
+export const uploadApi = {
+  image: (file) => {
+    const form = new FormData()
+    form.append('file', file)
+    return http.post('/uploads', form)
+  },
 }

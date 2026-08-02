@@ -22,6 +22,8 @@ public class Article {
 
     private String summary;
 
+    private String cover;
+
     private Integer status;
 
     private Integer viewCount;
