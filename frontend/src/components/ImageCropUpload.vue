@@ -92,7 +92,8 @@ async function confirmCrop() {
   }
   uploading.value = true
   try {
-    const data = await uploadApi.image(blob, props.uploadType)
+    const file = new File([blob], 'cropped.jpg', { type: 'image/jpeg' })
+    const data = await uploadApi.image(file, props.uploadType)
     emit('uploaded', data)
     dialogVisible.value = false
     ElMessage.success('图片已上传')

@@ -55,7 +55,7 @@ public class UploadController {
         if (file.getSize() > MAX_SIZE) {
             throw new BizException("图片大小不能超过 5MB");
         }
-        String ext = extensionOf(file.getOriginalFilename());
+        String ext = extensionOf(file);
         if (!ALLOWED_EXTENSIONS.contains(ext)) {
             throw new BizException("仅支持 jpg/png/gif/webp 图片");
         }
@@ -178,10 +178,21 @@ public class UploadController {
         };
     }
 
-    private String extensionOf(String filename) {
-        if (filename == null || !filename.contains(".")) {
-            return "";
+    private String extensionOf(MultipartFile file) {
+        String name = file.getOriginalFilename();
+        if (name != null && name.contains(".")) {
+            return name.substring(name.lastIndexOf('.') + 1).toLowerCase();
         }
-        return filename.substring(filename.lastIndexOf('.') + 1).toLowerCase();
+        String contentType = file.getContentType();
+        if (contentType != null) {
+            return switch (contentType) {
+                case "image/jpeg" -> "jpg";
+                case "image/png" -> "png";
+                case "image/gif" -> "gif";
+                case "image/webp" -> "webp";
+                default -> "";
+            };
+        }
+        return "";
     }
 }
