@@ -6,6 +6,7 @@ import ArticleCard from '../components/ArticleCard.vue'
 
 const route = useRoute()
 const userId = () => Number(route.params.id)
+const invalidId = () => !/^\d+$/.test(route.params.id)
 
 const user = ref(null)
 const articles = ref([])
@@ -30,14 +31,17 @@ async function loadArticles() {
 }
 
 onMounted(() => {
-  loadProfile()
-  loadArticles()
+  if (!invalidId()) {
+    loadProfile()
+    loadArticles()
+  }
 })
 </script>
 
 <template>
   <div>
-    <el-card v-if="user" class="profile-head" shadow="never">
+    <el-empty v-if="invalidId()" description="用户不存在或已注销" />
+    <el-card v-else-if="user" class="profile-head" shadow="never">
       <el-avatar :size="80" :src="user.avatar" />
       <div class="info">
         <h2 class="nickname">{{ user.nickname }}</h2>

@@ -55,7 +55,7 @@
 
 | 方法 | 路径 | 说明 |
 |---|---|---|
-| POST | `/api/uploads` | multipart 字段 `file`,返回 `{url: "/uploads/xxx.png"}`;限制 5MB,jpg/png/gif/webp/svg |
+| POST | `/api/uploads` | multipart 字段 `file`,返回 `{url: "/uploads/xxx.png"}`;限制 5MB,jpg/png/gif/webp |
 | GET | `/uploads/**` | 上传的静态资源(公开) |
 
 ## 错误码

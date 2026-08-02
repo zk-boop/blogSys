@@ -136,7 +136,7 @@ onMounted(() => {
     </el-card>
 
     <el-card class="comment-card" shadow="never">
-      <template #header>评论 ({{ comments.length }})</template>
+      <template #header>评论 ({{ article.commentCount }})</template>
       <div v-if="store.isLoggedIn" class="comment-input">
         <el-input
           v-model="commentText"
@@ -211,8 +211,9 @@ onMounted(() => {
 
 .detail-cover {
   width: 100%;
-  max-height: 320px;
-  object-fit: cover;
+  max-height: 420px;
+  object-fit: contain;
+  background: #f0f2f5;
   border-radius: 8px;
   margin: 16px 0 4px;
 }

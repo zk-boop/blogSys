@@ -9,6 +9,7 @@ const route = useRoute()
 const router = useRouter()
 
 const isEdit = computed(() => !!route.params.id)
+const originalStatus = ref(1)
 const formRef = ref()
 const saving = ref(false)
 const uploading = ref(false)
@@ -34,6 +35,7 @@ const preview = computed(() => renderMarkdown(form.content))
 async function loadArticle() {
   if (!isEdit.value) return
   const data = await articleApi.editDetail(route.params.id)
+  originalStatus.value = data.status
   form.title = data.title
   form.summary = data.summary
   form.cover = data.cover
@@ -210,8 +212,8 @@ onMounted(loadArticle)
       </el-form-item>
       <div class="actions">
         <el-button @click="router.back()">取消</el-button>
-        <el-button v-if="isEdit" @click="save(true)">保存草稿</el-button>
-        <el-button v-else type="info" plain :loading="saving" @click="save(true)">保存草稿</el-button>
+        <el-button v-if="isEdit && originalStatus === 0" @click="save(true)">保存草稿</el-button>
+        <el-button v-else-if="!isEdit" type="info" plain :loading="saving" @click="save(true)">保存草稿</el-button>
         <el-button type="primary" :loading="saving" @click="save(false)">{{ isEdit ? '发布' : '发布文章' }}</el-button>
       </div>
     </el-form>

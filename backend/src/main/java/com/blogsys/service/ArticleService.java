@@ -34,6 +34,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -87,8 +88,10 @@ public class ArticleService {
         if (article == null) {
             throw new BizException(404, "文章不存在");
         }
-        if (article.getStatus() == ArticleStatus.DRAFT.getValue()) {
-            SecurityUtil.requireOwnerOrAdmin(article.getUserId());
+        if (Objects.equals(article.getStatus(), ArticleStatus.DRAFT.getValue())) {
+            if (!canViewDraft(article.getUserId())) {
+                throw new BizException(404, "文章不存在");
+            }
         } else {
             articleMapper.incrViewCount(id);
             article.setViewCount(article.getViewCount() + 1);
@@ -100,6 +103,15 @@ public class ArticleService {
         vo.setLiked(isLikedByCurrentUser(id));
         attachAuthorAndTags(vo, article);
         return vo;
+    }
+
+    private boolean canViewDraft(Long ownerId) {
+        try {
+            LoginUser loginUser = SecurityUtil.currentUser();
+            return loginUser.getId().equals(ownerId) || "ADMIN".equals(loginUser.getRole());
+        } catch (BizException e) {
+            return false;
+        }
     }
 
     public ArticleDetailVO editDetail(Long id) {

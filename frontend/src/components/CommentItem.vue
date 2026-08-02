@@ -100,7 +100,13 @@ async function submitReply() {
               <span v-if="reply.replyTo" class="reply-to">回复 @{{ reply.replyTo.nickname || reply.replyTo.username }}</span>
               <span class="comment-date">{{ reply.createdAt?.slice(0, 10) }}</span>
               <el-button v-if="store.isLoggedIn" class="reply-btn" link type="primary" @click="startReply(reply)">回复</el-button>
-              <el-button v-if="canDelete || reply.user?.id === store.user?.id" class="comment-del" type="danger" link @click="emit('delete', reply.id)">删除</el-button>
+              <el-button
+                v-if="store.isAdmin || reply.user?.id === store.user?.id"
+                class="comment-del"
+                type="danger"
+                link
+                @click="emit('delete', reply.id)"
+              >删除</el-button>
             </div>
             <p class="comment-content">{{ reply.content }}</p>
           </div>

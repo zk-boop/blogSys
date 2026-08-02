@@ -32,7 +32,8 @@ public class CommentService {
     private final UserService userService;
 
     public List<CommentVO> listByArticle(Long articleId) {
-        if (articleMapper.selectById(articleId) == null) {
+        Article article = articleMapper.selectById(articleId);
+        if (article == null || article.getStatus() != ArticleStatus.PUBLISHED.getValue()) {
             throw new BizException(404, "文章不存在");
         }
         List<Comment> comments = commentMapper.selectList(

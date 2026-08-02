@@ -25,7 +25,7 @@ public class UploadController {
 
     private static final long MAX_SIZE = 5 * 1024 * 1024L;
     private static final Set<String> ALLOWED_EXTENSIONS =
-            Set.of("jpg", "jpeg", "png", "gif", "webp", "svg");
+            Set.of("jpg", "jpeg", "png", "gif", "webp");
 
     private final Path uploadDir;
 
@@ -43,9 +43,13 @@ public class UploadController {
         }
         String ext = extensionOf(file.getOriginalFilename());
         if (!ALLOWED_EXTENSIONS.contains(ext)) {
-            throw new BizException("仅支持 jpg/png/gif/webp/svg 图片");
+            throw new BizException("仅支持 jpg/png/gif/webp 图片");
         }
         try {
+            byte[] head = file.getBytes();
+            if (!matchesMagic(head, ext)) {
+                throw new BizException("文件内容与扩展名不符");
+            }
             Files.createDirectories(uploadDir);
             String filename = UUID.randomUUID().toString().replace("-", "") + "." + ext;
             file.transferTo(uploadDir.resolve(filename).toFile());
@@ -54,6 +58,20 @@ public class UploadController {
             log.error("Upload failed", e);
             throw new BizException(500, "图片保存失败");
         }
+    }
+
+    private boolean matchesMagic(byte[] head, String ext) {
+        if (head.length < 12) {
+            return false;
+        }
+        return switch (ext) {
+            case "png" -> (head[0] & 0xFF) == 0x89 && head[1] == 0x50 && head[2] == 0x4E && head[3] == 0x47;
+            case "jpg", "jpeg" -> (head[0] & 0xFF) == 0xFF && (head[1] & 0xFF) == 0xD8 && (head[2] & 0xFF) == 0xFF;
+            case "gif" -> head[0] == 0x47 && head[1] == 0x49 && head[2] == 0x46 && head[3] == 0x38;
+            case "webp" -> head[0] == 0x52 && head[1] == 0x49 && head[2] == 0x46 && head[3] == 0x46
+                    && head[8] == 0x57 && head[9] == 0x45 && head[10] == 0x42 && head[11] == 0x50;
+            default -> false;
+        };
     }
 
     private String extensionOf(String filename) {
