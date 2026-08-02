@@ -42,7 +42,7 @@ defineProps({
 <style scoped>
 .article-card {
   margin-bottom: 16px;
-  border-radius: 8px;
+  border-radius: 0;
 }
 
 .card-body {
@@ -126,7 +126,6 @@ defineProps({
   width: 100%;
   height: 100%;
   object-fit: cover;
-  border-radius: 8px;
   display: block;
 }
 
