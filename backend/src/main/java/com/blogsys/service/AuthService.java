@@ -71,6 +71,7 @@ public class AuthService {
         vo.setNickname(user.getNickname());
         vo.setAvatar(user.getAvatar());
         vo.setRole(user.getRole());
+        vo.setStatus(user.getStatus());
         vo.setCreatedAt(user.getCreatedAt());
         return vo;
     }
