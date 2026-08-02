@@ -11,6 +11,7 @@ import com.blogsys.entity.Comment;
 import com.blogsys.entity.User;
 import com.blogsys.mapper.ArticleMapper;
 import com.blogsys.mapper.CommentMapper;
+import com.blogsys.security.LoginUser;
 import com.blogsys.security.SecurityUtil;
 import com.blogsys.vo.AdminCommentVO;
 import com.blogsys.vo.CommentVO;
@@ -38,14 +39,29 @@ public class CommentService {
 
     public List<CommentVO> listByArticle(Long articleId) {
         Article article = articleMapper.selectById(articleId);
-        if (article == null || article.getStatus() != ArticleStatus.PUBLISHED.getValue()) {
+        if (article == null) {
             throw new BizException(404, "文章不存在");
+        }
+        if (article.getStatus() != ArticleStatus.PUBLISHED.getValue()) {
+            if (!canViewDraft(article.getUserId())) {
+                throw new BizException(404, "文章不存在");
+            }
+            return List.of();
         }
         List<Comment> comments = commentMapper.selectList(
                 Wrappers.<Comment>lambdaQuery()
                         .eq(Comment::getArticleId, articleId)
                         .orderByAsc(Comment::getCreatedAt));
         return buildTree(toVOs(comments));
+    }
+
+    private boolean canViewDraft(Long ownerId) {
+        try {
+            LoginUser loginUser = SecurityUtil.currentUser();
+            return loginUser.getId().equals(ownerId) || "ADMIN".equals(loginUser.getRole());
+        } catch (BizException e) {
+            return false;
+        }
     }
 
     public PageResult<AdminCommentVO> adminPage(long page, long size, String keyword) {
