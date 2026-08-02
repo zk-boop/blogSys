@@ -127,7 +127,7 @@ function cancel() {
       <div
         ref="cropWrapRef"
         class="cropper-wrap"
-        @wheel.passive="onWheel"
+        @wheel="onWheel"
       >
         <img ref="cropImageRef" alt="crop" />
       </div>
