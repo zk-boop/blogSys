@@ -47,7 +47,8 @@ public class RssController {
                     .append("]]></description>\n");
             xml.append("<author><![CDATA[").append(authorName).append("]]></author>\n");
             if (article.getCreatedAt() != null) {
-                xml.append("<pubDate>").append(RFC822.format(article.getCreatedAt())).append("</pubDate>\n");
+                String pubDate = RFC822.format(article.getCreatedAt().atZone(java.time.ZoneId.systemDefault()));
+                xml.append("<pubDate>").append(pubDate).append("</pubDate>\n");
             }
             xml.append("</item>\n");
         }
