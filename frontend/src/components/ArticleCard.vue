@@ -8,31 +8,33 @@ defineProps({
 
 <template>
   <el-card class="article-card" shadow="hover">
-    <router-link v-if="article.cover" :to="`/article/${article.id}`">
-      <img :src="article.coverThumb || article.cover" class="cover" alt="cover" />
-    </router-link>
-    <template #header>
-      <div class="card-header">
-        <router-link :to="`/article/${article.id}`" class="title">
-          {{ article.title }}
-          <el-tag v-if="article.status === 0" size="small" type="warning">草稿</el-tag>
-        </router-link>
-        <div class="tags">
-          <el-tag v-for="tag in article.tags" :key="tag" size="small" effect="plain">{{ tag }}</el-tag>
+    <div class="card-body">
+      <div class="card-main">
+        <div class="card-header">
+          <router-link :to="`/article/${article.id}`" class="title">
+            {{ article.title }}
+            <el-tag v-if="article.status === 0" size="small" type="warning">草稿</el-tag>
+          </router-link>
+          <div class="tags">
+            <el-tag v-for="tag in article.tags" :key="tag" size="small" effect="plain">{{ tag }}</el-tag>
+          </div>
+          <slot name="extra" />
         </div>
-        <slot name="extra" />
+        <p class="summary">{{ article.summary || '暂无摘要' }}</p>
+        <div class="meta">
+          <router-link :to="`/user/${article.author?.id}`" class="author">
+            <el-avatar :size="22" :src="avatarSrc(article.author?.avatar, article.author?.nickname || article.author?.username)" />
+            {{ article.author?.nickname || article.author?.username }}
+          </router-link>
+          <span class="date">{{ article.createdAt?.slice(0, 10) }}</span>
+          <span class="stat">浏览 {{ article.viewCount }}</span>
+          <span class="stat">赞 {{ article.likeCount }}</span>
+          <span class="stat">评论 {{ article.commentCount }}</span>
+        </div>
       </div>
-    </template>
-    <p class="summary">{{ article.summary || '暂无摘要' }}</p>
-    <div class="meta">
-      <router-link :to="`/user/${article.author?.id}`" class="author">
-        <el-avatar :size="22" :src="avatarSrc(article.author?.avatar, article.author?.nickname || article.author?.username)" />
-        {{ article.author?.nickname || article.author?.username }}
+      <router-link v-if="article.cover" :to="`/article/${article.id}`" class="cover-link">
+        <img :src="article.coverThumb || article.cover" class="cover" alt="cover" />
       </router-link>
-      <span class="date">{{ article.createdAt?.slice(0, 10) }}</span>
-      <span class="stat">浏览 {{ article.viewCount }}</span>
-      <span class="stat">赞 {{ article.likeCount }}</span>
-      <span class="stat">评论 {{ article.commentCount }}</span>
     </div>
   </el-card>
 </template>
@@ -43,21 +45,21 @@ defineProps({
   border-radius: 8px;
 }
 
-.article-card :deep(.el-card__body) {
-  padding-top: 4px;
+.card-body {
+  display: flex;
+  gap: 20px;
+  align-items: stretch;
 }
 
-.cover {
-  width: 100%;
-  aspect-ratio: 16 / 9;
-  object-fit: cover;
-  border-radius: 8px 8px 0 0;
-  display: block;
+.card-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 .card-header {
   display: flex;
-  justify-content: space-between;
   align-items: center;
   gap: 12px;
 }
@@ -66,6 +68,9 @@ defineProps({
   font-size: 17px;
   font-weight: 600;
   color: #303133;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .title:hover {
@@ -76,13 +81,16 @@ defineProps({
   display: flex;
   gap: 6px;
   flex-wrap: wrap;
+  margin-left: auto;
 }
 
 .summary {
   color: #606266;
   line-height: 1.6;
+  margin-top: 10px;
+  flex: 1;
   display: -webkit-box;
-  -webkit-line-clamp: 2;
+  -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
@@ -100,9 +108,35 @@ defineProps({
   display: flex;
   align-items: center;
   gap: 6px;
+  min-width: 0;
 }
 
 .author:hover {
   color: #409eff;
+}
+
+.cover-link {
+  flex-shrink: 0;
+  width: 260px;
+  align-self: stretch;
+  display: block;
+}
+
+.cover {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 8px;
+  display: block;
+}
+
+@media (max-width: 640px) {
+  .cover-link {
+    width: 140px;
+  }
+
+  .title {
+    white-space: normal;
+  }
 }
 </style>
