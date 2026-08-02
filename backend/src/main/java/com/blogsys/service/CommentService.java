@@ -17,9 +17,11 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 @Service
 @RequiredArgsConstructor
@@ -47,18 +49,16 @@ public class CommentService {
             throw new BizException(404, "文章不存在");
         }
         Long parentId = request.getParentId();
-        Long effectiveParentId = null;
         if (parentId != null) {
             Comment parent = commentMapper.selectById(parentId);
             if (parent == null || !parent.getArticleId().equals(articleId)) {
                 throw new BizException(400, "被回复的评论不存在");
             }
-            effectiveParentId = parent.getParentId() == null ? parent.getId() : parent.getParentId();
         }
         Comment comment = new Comment();
         comment.setArticleId(articleId);
         comment.setUserId(SecurityUtil.currentUserId());
-        comment.setParentId(effectiveParentId);
+        comment.setParentId(parentId);
         comment.setContent(request.getContent());
         commentMapper.insert(comment);
 
@@ -73,33 +73,66 @@ public class CommentService {
             throw new BizException(404, "评论不存在");
         }
         SecurityUtil.requireOwnerOrAdmin(comment.getUserId());
-        int removed = 1;
-        if (comment.getParentId() == null) {
-            removed += commentMapper.selectCount(Wrappers.<Comment>lambdaQuery()
-                    .eq(Comment::getParentId, comment.getId()));
-            commentMapper.delete(Wrappers.<Comment>lambdaQuery().eq(Comment::getParentId, comment.getId()));
+        List<Long> toDelete = collectSubtree(comment);
+        commentMapper.deleteBatchIds(toDelete);
+        articleMapper.incrCommentCount(comment.getArticleId(), -toDelete.size());
+    }
+
+    private List<Long> collectSubtree(Comment root) {
+        List<Comment> all = commentMapper.selectList(
+                Wrappers.<Comment>lambdaQuery().eq(Comment::getArticleId, root.getArticleId()));
+        List<Long> toDelete = new ArrayList<>();
+        toDelete.add(root.getId());
+        for (int i = 0; i < toDelete.size(); i++) {
+            Long parentId = toDelete.get(i);
+            for (Comment c : all) {
+                if (parentId.equals(c.getParentId()) && !toDelete.contains(c.getId())) {
+                    toDelete.add(c.getId());
+                }
+            }
         }
-        commentMapper.deleteById(id);
-        articleMapper.incrCommentCount(comment.getArticleId(), -removed);
+        return toDelete;
     }
 
     private List<CommentVO> buildTree(List<CommentVO> flat) {
-        Map<Long, CommentVO> roots = new LinkedHashMap<>();
+        Map<Long, CommentVO> all = new LinkedHashMap<>();
+        for (CommentVO vo : flat) {
+            all.put(vo.getId(), vo);
+        }
         for (CommentVO vo : flat) {
             if (vo.getParentId() == null) {
                 vo.setReplies(new ArrayList<>());
+            }
+        }
+        Map<Long, CommentVO> roots = new LinkedHashMap<>();
+        for (CommentVO vo : flat) {
+            CommentVO root = findRoot(vo, all);
+            if (root == vo) {
                 roots.put(vo.getId(), vo);
             }
         }
         for (CommentVO vo : flat) {
             if (vo.getParentId() != null) {
-                CommentVO root = roots.get(vo.getParentId());
-                if (root != null) {
+                CommentVO root = findRoot(vo, all);
+                if (root != vo && root.getReplies() != null) {
                     root.getReplies().add(vo);
                 }
             }
         }
         return new ArrayList<>(roots.values());
+    }
+
+    private CommentVO findRoot(CommentVO vo, Map<Long, CommentVO> all) {
+        CommentVO cur = vo;
+        Set<Long> seen = new HashSet<>();
+        while (cur.getParentId() != null) {
+            CommentVO parent = all.get(cur.getParentId());
+            if (parent == null || !seen.add(parent.getId())) {
+                break;
+            }
+            cur = parent;
+        }
+        return cur;
     }
 
     private List<CommentVO> toVOs(List<Comment> comments) {

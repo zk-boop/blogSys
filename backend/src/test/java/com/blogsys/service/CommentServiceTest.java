@@ -62,7 +62,7 @@ class CommentServiceTest {
     }
 
     @Test
-    void createReply_shouldHoistToTopLevel_whenReplyingToReply() {
+    void createReply_shouldKeepRealParent_whenReplyingToReply() {
         Article article = new Article();
         article.setId(10L);
         article.setStatus(1);
@@ -83,7 +83,7 @@ class CommentServiceTest {
         request.setParentId(2L);
         CommentVO vo = commentService.create(10L, request);
 
-        assertEquals(1L, vo.getParentId());
+        assertEquals(2L, vo.getParentId());
     }
 
     @Test
@@ -131,10 +131,38 @@ class CommentServiceTest {
         comment.setUserId(1L);
         comment.setArticleId(10L);
         when(commentMapper.selectById(5L)).thenReturn(comment);
+        when(commentMapper.selectList(any())).thenReturn(java.util.List.of());
 
         commentService.delete(5L);
 
-        verify(commentMapper).deleteById(5L);
+        verify(commentMapper).deleteBatchIds(java.util.List.of(5L));
         verify(articleMapper).incrCommentCount(10L, -1);
+    }
+
+    @Test
+    void deleteTopLevel_shouldRemoveWholeSubtree() {
+        Comment comment = new Comment();
+        comment.setId(5L);
+        comment.setUserId(1L);
+        comment.setArticleId(10L);
+        comment.setParentId(null);
+        when(commentMapper.selectById(5L)).thenReturn(comment);
+
+        Comment reply = new Comment();
+        reply.setId(6L);
+        reply.setUserId(2L);
+        reply.setArticleId(10L);
+        reply.setParentId(5L);
+        Comment nested = new Comment();
+        nested.setId(7L);
+        nested.setUserId(3L);
+        nested.setArticleId(10L);
+        nested.setParentId(6L);
+        when(commentMapper.selectList(any())).thenReturn(java.util.List.of(reply, nested));
+
+        commentService.delete(5L);
+
+        verify(commentMapper).deleteBatchIds(java.util.List.of(5L, 6L, 7L));
+        verify(articleMapper).incrCommentCount(10L, -3);
     }
 }
