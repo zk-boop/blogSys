@@ -9,18 +9,21 @@ import com.blogsys.dto.ArticleRequest;
 import com.blogsys.entity.Article;
 import com.blogsys.entity.ArticleTag;
 import com.blogsys.entity.Comment;
+import com.blogsys.entity.Favorite;
 import com.blogsys.entity.Like;
 import com.blogsys.entity.Tag;
 import com.blogsys.entity.User;
 import com.blogsys.mapper.ArticleMapper;
 import com.blogsys.mapper.ArticleTagMapper;
 import com.blogsys.mapper.CommentMapper;
+import com.blogsys.mapper.FavoriteMapper;
 import com.blogsys.mapper.LikeMapper;
 import com.blogsys.mapper.TagMapper;
 import com.blogsys.security.LoginUser;
 import com.blogsys.security.SecurityUtil;
 import com.blogsys.vo.ArticleDetailVO;
 import com.blogsys.vo.ArticleListItemVO;
+import com.blogsys.vo.FavoriteVO;
 import com.blogsys.vo.UserBriefVO;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DuplicateKeyException;
@@ -48,6 +51,7 @@ public class ArticleService {
     private final ArticleTagMapper articleTagMapper;
     private final CommentMapper commentMapper;
     private final LikeMapper likeMapper;
+    private final FavoriteMapper favoriteMapper;
     private final UserService userService;
 
     public PageResult<ArticleListItemVO> page(long page, long size, Long tagId, String keyword) {
@@ -124,8 +128,57 @@ public class ArticleService {
         copyBase(article, vo);
         vo.setContent(article.getContent());
         vo.setLiked(isLikedByCurrentUser(id));
+        vo.setFavorited(isFavoritedByCurrentUser(id));
         attachAuthorAndTags(vo, article);
         return vo;
+    }
+
+    @Transactional
+    public FavoriteVO toggleFavorite(Long articleId) {
+        Article article = articleMapper.selectById(articleId);
+        if (article == null || article.getStatus() != ArticleStatus.PUBLISHED.getValue()) {
+            throw new BizException(404, "文章不存在");
+        }
+        Long userId = SecurityUtil.currentUserId();
+        Favorite existing = favoriteMapper.selectOne(Wrappers.<Favorite>lambdaQuery()
+                .eq(Favorite::getUserId, userId)
+                .eq(Favorite::getArticleId, articleId));
+        if (existing != null) {
+            favoriteMapper.deleteById(existing.getId());
+            return new FavoriteVO(false);
+        }
+        Favorite favorite = new Favorite();
+        favorite.setUserId(userId);
+        favorite.setArticleId(articleId);
+        favoriteMapper.insert(favorite);
+        return new FavoriteVO(true);
+    }
+
+    public PageResult<ArticleListItemVO> favoritesPage(long page, long size, Long userId) {
+        List<Favorite> favorites = favoriteMapper.selectList(Wrappers.<Favorite>lambdaQuery()
+                .eq(Favorite::getUserId, userId)
+                .orderByDesc(Favorite::getCreatedAt));
+        int total = favorites.size();
+        int from = (int) Math.min((page - 1) * size, total);
+        int to = (int) Math.min(from + size, total);
+        List<Favorite> slice = favorites.subList(from, to);
+        Map<Long, Article> articles = findByIds(slice.stream().map(Favorite::getArticleId).toList());
+        List<Article> ordered = slice.stream()
+                .map(fav -> articles.get(fav.getArticleId()))
+                .filter(Objects::nonNull)
+                .toList();
+        return new PageResult<>(total, page, size, attachUserAndTags(ordered));
+    }
+
+    private boolean isFavoritedByCurrentUser(Long articleId) {
+        try {
+            Long userId = SecurityUtil.currentUserId();
+            return favoriteMapper.selectCount(Wrappers.<Favorite>lambdaQuery()
+                    .eq(Favorite::getUserId, userId)
+                    .eq(Favorite::getArticleId, articleId)) > 0;
+        } catch (BizException e) {
+            return false;
+        }
     }
 
     private boolean canViewDraft(Long ownerId) {
@@ -178,6 +231,7 @@ public class ArticleService {
         articleTagMapper.delete(Wrappers.<ArticleTag>lambdaQuery().eq(ArticleTag::getArticleId, id));
         commentMapper.delete(Wrappers.<Comment>lambdaQuery().eq(Comment::getArticleId, id));
         likeMapper.delete(Wrappers.<Like>lambdaQuery().eq(Like::getArticleId, id));
+        favoriteMapper.delete(Wrappers.<Favorite>lambdaQuery().eq(Favorite::getArticleId, id));
         cleanupOrphanTags(removedTagIds);
     }
 
@@ -199,14 +253,16 @@ public class ArticleService {
     }
 
     private int resolveStatus(ArticleRequest request) {
-        return Boolean.TRUE.equals(request.getDraft())
-                ? ArticleStatus.DRAFT.getValue()
-                : ArticleStatus.PUBLISHED.getValue();
+        boolean draft = Boolean.TRUE.equals(request.getDraft());
+        if (!draft && (!StringUtils.hasText(request.getTitle()) || !StringUtils.hasText(request.getContent()))) {
+            throw new BizException("发布时标题和内容不能为空");
+        }
+        return draft ? ArticleStatus.DRAFT.getValue() : ArticleStatus.PUBLISHED.getValue();
     }
 
     private void applyRequest(Article article, ArticleRequest request) {
-        article.setTitle(request.getTitle());
-        article.setContent(request.getContent());
+        article.setTitle(StringUtils.hasText(request.getTitle()) ? request.getTitle().trim() : "");
+        article.setContent(request.getContent() == null ? "" : request.getContent());
         article.setSummary(StringUtils.hasText(request.getSummary()) ? request.getSummary() : "");
         article.setCover(StringUtils.hasText(request.getCover()) ? request.getCover() : "");
     }

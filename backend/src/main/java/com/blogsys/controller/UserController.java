@@ -45,6 +45,13 @@ public class UserController {
         return Result.ok(articleService.pageByUser(page, size, SecurityUtil.currentUserId(), null));
     }
 
+    @GetMapping("/me/favorites")
+    public Result<PageResult<ArticleListItemVO>> myFavorites(
+            @RequestParam(defaultValue = "1") long page,
+            @RequestParam(defaultValue = "10") long size) {
+        return Result.ok(articleService.favoritesPage(page, size, SecurityUtil.currentUserId()));
+    }
+
     @GetMapping("/{id}")
     public Result<UserVO> profile(@PathVariable Long id) {
         return Result.ok(userService.publicProfile(id));

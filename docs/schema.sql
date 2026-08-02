@@ -86,4 +86,15 @@ CREATE TABLE likes (
     UNIQUE KEY uk_article_user (article_id, user_id)
 ) ENGINE = InnoDB COMMENT '点赞表';
 
+-- 收藏表
+CREATE TABLE favorites (
+    id         BIGINT   NOT NULL AUTO_INCREMENT,
+    user_id    BIGINT   NOT NULL,
+    article_id BIGINT   NOT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_user_article (user_id, article_id),
+    KEY idx_user (user_id)
+) ENGINE = InnoDB COMMENT '收藏表';
+
 SET FOREIGN_KEY_CHECKS = 1;

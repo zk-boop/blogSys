@@ -6,6 +6,7 @@ import com.blogsys.dto.ArticleRequest;
 import com.blogsys.service.ArticleService;
 import com.blogsys.vo.ArticleDetailVO;
 import com.blogsys.vo.ArticleListItemVO;
+import com.blogsys.vo.FavoriteVO;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -60,6 +61,11 @@ public class ArticleController {
     public Result<Void> update(@PathVariable Long id, @Valid @RequestBody ArticleRequest request) {
         articleService.update(id, request);
         return Result.ok();
+    }
+
+    @PostMapping("/{id}/favorite")
+    public Result<FavoriteVO> toggleFavorite(@PathVariable Long id) {
+        return Result.ok(articleService.toggleFavorite(id));
     }
 
     @DeleteMapping("/{id}")

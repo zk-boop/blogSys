@@ -19,6 +19,7 @@ const total = ref(0)
 const page = ref(1)
 const size = ref(10)
 const savingProfile = ref(false)
+const activeTab = ref('articles')
 
 async function saveProfile() {
   savingProfile.value = true
@@ -37,11 +38,27 @@ async function loadMyArticles() {
   total.value = data.total
 }
 
+async function loadMyFavorites() {
+  const data = await articleApi.myFavorites({ page: page.value, size: size.value })
+  myArticles.value = data.records
+  total.value = data.total
+}
+
+function switchTab(tab) {
+  activeTab.value = tab
+  page.value = 1
+  if (tab === 'articles') {
+    loadMyArticles()
+  } else {
+    loadMyFavorites()
+  }
+}
+
 async function removeArticle(id) {
   await ElMessageBox.confirm('确定删除这篇文章吗?此操作不可恢复。', '删除文章', { type: 'warning' })
   await articleApi.remove(id)
   ElMessage.success('已删除')
-  loadMyArticles()
+  activeTab.value === 'articles' ? loadMyArticles() : loadMyFavorites()
 }
 
 onMounted(loadMyArticles)
@@ -75,16 +92,24 @@ onMounted(loadMyArticles)
     </el-card>
 
     <div class="articles-area">
-      <h3 class="section-title">我的文章</h3>
+      <el-tabs v-model="activeTab" @tab-change="switchTab">
+        <el-tab-pane label="我的文章" name="articles" />
+        <el-tab-pane label="我的收藏" name="favorites" />
+      </el-tabs>
       <template v-if="myArticles.length">
         <ArticleCard v-for="article in myArticles" :key="article.id" :article="article">
           <template #extra>
-            <el-button type="danger" link @click="removeArticle(article.id)">删除</el-button>
+            <el-button
+              v-if="activeTab === 'articles'"
+              type="danger"
+              link
+              @click="removeArticle(article.id)"
+            >删除</el-button>
           </template>
         </ArticleCard>
       </template>
-      <el-empty v-else description="还没有发布过文章">
-        <el-button type="primary" @click="$router.push('/write')">去写一篇</el-button>
+      <el-empty v-else :description="activeTab === 'articles' ? '还没有发布过文章' : '还没有收藏任何文章'">
+        <el-button v-if="activeTab === 'articles'" type="primary" @click="$router.push('/write')">去写一篇</el-button>
       </el-empty>
       <div class="pagination">
         <el-pagination
@@ -93,7 +118,7 @@ onMounted(loadMyArticles)
           :total="total"
           layout="prev, pager, next"
           background
-          @current-change="loadMyArticles"
+          @current-change="activeTab === 'articles' ? loadMyArticles() : loadMyFavorites()"
         />
       </div>
     </div>

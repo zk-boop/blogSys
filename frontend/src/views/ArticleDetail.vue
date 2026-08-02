@@ -7,6 +7,7 @@ import { useUserStore } from '../stores/user'
 import { renderMarkdown, extractToc } from '../utils/markdown'
 import { avatarSrc } from '../utils/avatar'
 import CommentItem from '../components/CommentItem.vue'
+import Lightbox from '../components/Lightbox.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -18,10 +19,12 @@ const comments = ref([])
 const commentText = ref('')
 const liked = ref(false)
 const likeCount = ref(0)
+const favorited = ref(false)
 const submitting = ref(false)
 const liking = ref(false)
 const toc = ref([])
 const activeToc = ref('')
+const lightboxSrc = ref('')
 
 const rendered = computed(() => renderMarkdown(article.value?.content))
 
@@ -30,6 +33,7 @@ async function loadDetail() {
   article.value = data
   liked.value = data.liked
   likeCount.value = data.likeCount
+  favorited.value = data.favorited
   toc.value = extractToc(data.content)
 }
 
@@ -51,6 +55,17 @@ async function toggleLike() {
   } finally {
     liking.value = false
   }
+}
+
+async function toggleFavorite() {
+  if (!store.isLoggedIn) {
+    ElMessage.warning('请先登录')
+    router.push('/login')
+    return
+  }
+  const data = await articleApi.favorite(articleId.value)
+  favorited.value = data.favorited
+  ElMessage.success(data.favorited ? '已收藏' : '已取消收藏')
 }
 
 async function submitComment() {
@@ -103,6 +118,13 @@ function jumpTo(id) {
   document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
 }
 
+function onBodyClick(event) {
+  const target = event.target
+  if (target && target.tagName === 'IMG') {
+    lightboxSrc.value = target.currentSrc || target.src
+  }
+}
+
 function onScroll() {
   const offset = 120
   let current = ''
@@ -148,7 +170,7 @@ onBeforeUnmount(() => window.removeEventListener('scroll', onScroll))
           </div>
         </div>
         <img v-if="article.cover" :src="article.cover" class="detail-cover" alt="cover" />
-        <article class="markdown-body" v-html="rendered" />
+        <article class="markdown-body" v-html="rendered" @click="onBodyClick" />
         <div class="like-bar">
           <el-button
             :type="liked ? 'primary' : 'default'"
@@ -156,6 +178,11 @@ onBeforeUnmount(() => window.removeEventListener('scroll', onScroll))
             :loading="liking"
             @click="toggleLike"
           >{{ liked ? '已点赞' : '点赞' }} {{ likeCount }}</el-button>
+          <el-button
+            :type="favorited ? 'warning' : 'default'"
+            round
+            @click="toggleFavorite"
+          >{{ favorited ? '已收藏' : '收藏' }}</el-button>
         </div>
       </el-card>
 
@@ -204,6 +231,8 @@ onBeforeUnmount(() => window.removeEventListener('scroll', onScroll))
     </aside>
   </div>
   <el-empty v-else description="文章不存在或已删除" />
+
+  <Lightbox v-if="lightboxSrc" :src="lightboxSrc" @close="lightboxSrc = ''" />
 </template>
 
 <style scoped>
@@ -274,6 +303,7 @@ onBeforeUnmount(() => window.removeEventListener('scroll', onScroll))
 .like-bar {
   display: flex;
   justify-content: center;
+  gap: 12px;
   padding-top: 20px;
   border-top: 1px solid var(--border-color);
 }

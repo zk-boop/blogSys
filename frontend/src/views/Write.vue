@@ -1,13 +1,15 @@
 <script setup>
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { articleApi, uploadApi } from '../api'
+import { useUserStore } from '../stores/user'
 import { renderMarkdown } from '../utils/markdown'
 import ImageCropUpload from '../components/ImageCropUpload.vue'
 
 const route = useRoute()
 const router = useRouter()
+const store = useUserStore()
 
 const isEdit = computed(() => !!route.params.id)
 const originalStatus = ref(1)
@@ -16,6 +18,9 @@ const saving = ref(false)
 const uploading = ref(false)
 const contentInputRef = ref()
 const fileInputRef = ref()
+const dirty = ref(false)
+const loaded = ref(false)
+let autosaveTimer = null
 
 const form = reactive({
   title: '',
@@ -33,7 +38,10 @@ const rules = {
 const preview = computed(() => renderMarkdown(form.content))
 
 async function loadArticle() {
-  if (!isEdit.value) return
+  if (!isEdit.value) {
+    loaded.value = true
+    return
+  }
   const data = await articleApi.editDetail(route.params.id)
   originalStatus.value = data.status
   form.title = data.title
@@ -41,6 +49,8 @@ async function loadArticle() {
   form.cover = data.cover
   form.tagNames = data.tags
   form.content = data.content
+  loaded.value = true
+  dirty.value = false
 }
 
 function payload(draft) {
@@ -54,19 +64,27 @@ function payload(draft) {
   }
 }
 
-async function save(draft) {
-  await formRef.value.validate()
+async function save(draft, silent = false) {
+  if (!draft) {
+    await formRef.value.validate()
+  }
   saving.value = true
   try {
     if (isEdit.value) {
       await articleApi.update(route.params.id, payload(draft))
-      ElMessage.success(draft ? '草稿已保存' : '已发布')
+      dirty.value = false
+      if (!silent) {
+        ElMessage.success(draft ? '草稿已保存' : '已发布')
+      }
       if (!draft) {
         router.push(`/article/${route.params.id}`)
       }
     } else {
       const id = await articleApi.create(payload(draft))
-      ElMessage.success(draft ? '草稿已保存' : '发布成功')
+      dirty.value = false
+      if (!silent) {
+        ElMessage.success(draft ? '草稿已保存' : '发布成功')
+      }
       if (!draft) {
         router.push(`/article/${id}`)
       } else {
@@ -77,6 +95,43 @@ async function save(draft) {
     saving.value = false
   }
 }
+
+async function autosave() {
+  if (!dirty.value || saving.value) return
+  try {
+    await save(true, true)
+  } catch {
+    /* 自动保存失败静默,下次定时重试 */
+  }
+}
+
+function onBeforeUnload(event) {
+  if (dirty.value && store.isLoggedIn) {
+    event.preventDefault()
+    event.returnValue = ''
+  }
+}
+
+watch(
+  () => [form.title, form.content, form.summary, form.cover, form.tagNames],
+  () => {
+    if (loaded.value) {
+      dirty.value = true
+    }
+  },
+  { deep: true }
+)
+
+onMounted(() => {
+  loadArticle()
+  autosaveTimer = setInterval(autosave, 20000)
+  window.addEventListener('beforeunload', onBeforeUnload)
+})
+
+onBeforeUnmount(() => {
+  clearInterval(autosaveTimer)
+  window.removeEventListener('beforeunload', onBeforeUnload)
+})
 
 function triggerImagePick() {
   fileInputRef.value?.click()

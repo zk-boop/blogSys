@@ -11,4 +11,5 @@ public class ArticleDetailVO extends ArticleListItemVO {
 
     private String content;
     private boolean liked;
+    private boolean favorited;
 }
