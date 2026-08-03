@@ -71,6 +71,7 @@ onBeforeUnmount(() => window.removeEventListener('scroll', onScroll))
       <router-link to="/" class="logo">blogSys<em>分享与记录</em></router-link>
       <nav class="nav">
         <router-link to="/">首页</router-link>
+        <router-link v-if="store.isLoggedIn" to="/ai">AI 助手</router-link>
         <router-link v-if="store.isLoggedIn" to="/write">写文章</router-link>
         <router-link v-if="store.isAdmin" to="/admin">管理后台</router-link>
       </nav>

@@ -28,6 +28,11 @@ blogsys:
     expire-hours: 72
   upload:
     dir: ${UPLOAD_DIR:uploads}
+  ai:
+    base-url: ${AI_BASE_URL:https://api.openai.com/v1}
+    api-key: ${AI_API_KEY:${AI_LLM_API_KEY:}}
+    model: ${AI_MODEL:gpt-4o-mini}
+    timeout-seconds: 120
 
 springdoc:
   api-docs:

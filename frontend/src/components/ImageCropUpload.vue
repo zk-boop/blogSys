@@ -126,7 +126,7 @@ function cancel() {
       v-model="dialogVisible"
       :title="`裁剪图片 (${aspectRatio === 1 ? '1:1' : '16:9'})`"
       width="860px"
-      top="6vh"
+      top="4vh"
       :close-on-click-modal="false"
       @closed="cancel"
     >
@@ -159,8 +159,9 @@ function cancel() {
 }
 
 .cropper-wrap {
-  height: 60vh;
-  min-height: 320px;
+  height: 55vh;
+  max-height: 480px;
+  min-height: 280px;
   overflow: hidden;
   position: relative;
 }
@@ -183,5 +184,10 @@ function cancel() {
   font-size: 12px;
   color: var(--text-muted);
   text-align: center;
+}
+
+:deep(.el-dialog__body) {
+  max-height: calc(100vh - 230px);
+  overflow-y: auto;
 }
 </style>

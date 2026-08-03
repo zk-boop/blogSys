@@ -74,4 +74,11 @@ docker compose up -d --build
 - 管理:管理员可删除任意文章/评论
 - 头像:DiceBear 生成默认头像,不做上传
 
-见 [docs/backlog.md](docs/backlog.md) 查看 v2 计划。
+见 [docs/backlog.md](docs/backlog.md) 查看 v2/v3 计划。
+
+## AI 功能(v3)
+
+- **AI 助手**:登录后访问 `/ai`,Agent 可调用工具搜索文章、查用户、看站内统计、推荐;SSE 流式输出。需要 OpenAI 兼容 API:
+  - 环境变量 `AI_API_KEY`(必填)、`AI_BASE_URL`(默认 `https://api.openai.com/v1`)、`AI_MODEL`(默认 `gpt-4o-mini`)
+  - 未配置时聊天页会提示"AI 服务未配置"
+- **相关推荐**:文章详情页底部,标签+关键词相似度打分,不依赖 AI 服务。

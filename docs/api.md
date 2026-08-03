@@ -68,6 +68,29 @@
 
 文章列表接口会附带 `coverThumb` 字段(封面缩略图 URL,供列表页使用;非 `/uploads/` 来源或 webp 则与 `cover` 相同)。
 
+## AI 助手(需登录)
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| POST | `/api/ai/chat` | AI 对话(SSE 流式),body: `{messages: [{role, content}]}`,返回 `text/event-stream` |
+
+SSE 事件类型:
+
+| event | data | 说明 |
+|---|---|---|
+| `tool` | `{name, args, result}` | 工具调用(前后各发一次,`result` 为空表示开始) |
+| `message` | `{content}` | 回答内容增量,可拼接出完整回复 |
+| `done` | `{}` | 对话结束 |
+| `error` | `{message}` | 出错(如未配置 `AI_API_KEY`) |
+
+Agent 可用工具:`searchArticles(keyword)`、`getArticleDetail(id)`、`getUserProfile(userId)`、`getSiteStats()`、`getHotArticles()`、`recommendArticles(articleId)`,全部为只读操作。
+
+## 相关推荐(公开)
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| GET | `/api/articles/{id}/recommend?size=` | 基于标签重叠与标题/摘要关键词打分的相关文章(不含 AI 依赖),返回文章列表,含 `recommendScore` |
+
 ## 错误码
 
 | HTTP | code | 说明 |

@@ -1,5 +1,6 @@
 package com.blogsys.vo;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import lombok.Data;
 
 import java.time.LocalDateTime;
@@ -20,4 +21,8 @@ public class ArticleListItemVO {
     private LocalDateTime createdAt;
     private UserBriefVO author;
     private List<String> tags;
+
+    /** 仅推荐接口使用,普通列表不输出。 */
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    private Double recommendScore;
 }

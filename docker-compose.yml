@@ -25,6 +25,9 @@ services:
       DB_PASSWORD: ${MYSQL_ROOT_PASSWORD:-123456}
       JWT_SECRET: ${JWT_SECRET:-blogsys-dev-secret-key-please-change-in-production-0123456789}
       UPLOAD_DIR: /app/uploads
+      AI_API_KEY: ${AI_API_KEY:-}
+      AI_BASE_URL: ${AI_BASE_URL:-https://api.openai.com/v1}
+      AI_MODEL: ${AI_MODEL:-gpt-4o-mini}
     volumes:
       - upload-data:/app/uploads
     depends_on:

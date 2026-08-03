@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { articleApi, commentApi, likeApi } from '../api'
+import { recommendApi } from '../api/ai'
 import { useUserStore } from '../stores/user'
 import { renderMarkdown, extractToc } from '../utils/markdown'
 import { avatarSrc } from '../utils/avatar'
@@ -25,6 +26,7 @@ const liking = ref(false)
 const toc = ref([])
 const activeToc = ref('')
 const lightboxSrc = ref('')
+const recommendations = ref([])
 
 const rendered = computed(() => renderMarkdown(article.value?.content))
 
@@ -39,6 +41,10 @@ async function loadDetail() {
 
 async function loadComments() {
   comments.value = await commentApi.list(articleId.value)
+}
+
+async function loadRecommendations() {
+  recommendations.value = await recommendApi.byArticle(articleId.value)
 }
 
 async function toggleLike() {
@@ -140,6 +146,7 @@ function onScroll() {
 onMounted(() => {
   loadDetail()
   loadComments()
+  loadRecommendations()
   window.addEventListener('scroll', onScroll, { passive: true })
 })
 
@@ -216,6 +223,25 @@ onBeforeUnmount(() => window.removeEventListener('scroll', onScroll))
             @delete="deleteComment"
             @refresh="loadComments"
           />
+        </div>
+      </el-card>
+
+      <el-card v-if="recommendations.length" class="recommend-card" shadow="never">
+        <template #header>相关推荐</template>
+        <div class="recommend-list">
+          <router-link
+            v-for="item in recommendations"
+            :key="item.id"
+            :to="`/article/${item.id}`"
+            class="recommend-item"
+          >
+            <div class="recommend-title">{{ item.title }}</div>
+            <div class="recommend-meta">
+              <span>{{ item.author?.nickname || item.author?.username }}</span>
+              <el-tag v-for="tag in item.tags" :key="tag" size="small" effect="plain">{{ tag }}</el-tag>
+              <span>浏览 {{ item.viewCount }}</span>
+            </div>
+          </router-link>
         </div>
       </el-card>
     </div>
@@ -308,8 +334,42 @@ onBeforeUnmount(() => window.removeEventListener('scroll', onScroll))
   display: flex;
   justify-content: center;
   gap: 12px;
-  padding-top: 20px;
-  border-top: 1px solid var(--border-color);
+  margin-top: 24px;
+}
+
+.recommend-card {
+  margin-top: 16px;
+  border-radius: 0;
+}
+
+.recommend-item {
+  display: block;
+  padding: 10px 12px;
+  border-radius: 8px;
+  transition: background 0.2s;
+}
+
+.recommend-item:hover {
+  background: rgba(64, 158, 255, 0.06);
+}
+
+.recommend-title {
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.recommend-item:hover .recommend-title {
+  color: var(--brand-color);
+}
+
+.recommend-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 6px;
+  font-size: 12.5px;
+  color: var(--text-muted);
 }
 
 .comment-card {
