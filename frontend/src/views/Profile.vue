@@ -5,6 +5,8 @@ import { articleApi, authApi } from '../api'
 import { useUserStore } from '../stores/user'
 import ArticleCard from '../components/ArticleCard.vue'
 import ImageCropUpload from '../components/ImageCropUpload.vue'
+import ListPager from '../components/ListPager.vue'
+import { useList } from '../useList'
 import { avatarSrc } from '../utils/avatar'
 
 const store = useUserStore()
@@ -14,12 +16,26 @@ const profileForm = reactive({
   avatar: store.user?.avatar || '',
 })
 
-const myArticles = ref([])
-const total = ref(0)
-const page = ref(1)
-const size = ref(10)
 const savingProfile = ref(false)
 const activeTab = ref('articles')
+
+// 两个 tab 共用同一块分页:取数函数按当前 tab 分派,模块只管状态。
+// 此前是两个 load 函数各自复制一遍「取数 → 赋值 records/total」,外加一处三元表达式分派。
+const {
+  records: myArticles,
+  total,
+  page,
+  size,
+  loading,
+  failure,
+  phase,
+  load: loadMyArticles,
+  search,
+  goTo,
+} = useList(({ page: current, size: pageSize }) =>
+  activeTab.value === 'articles'
+    ? articleApi.myArticles({ page: current, size: pageSize })
+    : articleApi.myFavorites({ page: current, size: pageSize }))
 
 async function saveProfile() {
   savingProfile.value = true
@@ -32,33 +48,18 @@ async function saveProfile() {
   }
 }
 
-async function loadMyArticles() {
-  const data = await articleApi.myArticles({ page: page.value, size: size.value })
-  myArticles.value = data.records
-  total.value = data.total
-}
-
-async function loadMyFavorites() {
-  const data = await articleApi.myFavorites({ page: page.value, size: size.value })
-  myArticles.value = data.records
-  total.value = data.total
-}
-
 function switchTab(tab) {
   activeTab.value = tab
-  page.value = 1
-  if (tab === 'articles') {
-    loadMyArticles()
-  } else {
-    loadMyFavorites()
-  }
+  // 换 tab 回到第 1 页再取 —— 与原先「page.value = 1 之后调对应 load」等价,
+  // 而取数函数会因为 activeTab 已经变了而取到另一份列表
+  search()
 }
 
 async function removeArticle(id) {
   await ElMessageBox.confirm('确定删除这篇文章吗?此操作不可恢复。', '删除文章', { type: 'warning' })
   await articleApi.remove(id)
   ElMessage.success('已删除')
-  activeTab.value === 'articles' ? loadMyArticles() : loadMyFavorites()
+  loadMyArticles()
 }
 
 onMounted(loadMyArticles)
@@ -108,19 +109,13 @@ onMounted(loadMyArticles)
           </template>
         </ArticleCard>
       </template>
+      <el-empty v-else-if="phase === 'failed'" :description="failure">
+        <el-button type="primary" @click="loadMyArticles">重试</el-button>
+      </el-empty>
       <el-empty v-else :description="activeTab === 'articles' ? '还没有发布过文章' : '还没有收藏任何文章'">
         <el-button v-if="activeTab === 'articles'" type="primary" @click="$router.push('/write')">去写一篇</el-button>
       </el-empty>
-      <div class="pagination">
-        <el-pagination
-          v-model:current-page="page"
-          :page-size="size"
-          :total="total"
-          layout="prev, pager, next"
-          background
-          @current-change="activeTab === 'articles' ? loadMyArticles() : loadMyFavorites()"
-        />
-      </div>
+      <ListPager :page="page" :size="size" :total="total" @change="goTo" />
     </div>
   </div>
 </template>
@@ -154,11 +149,7 @@ onMounted(loadMyArticles)
   margin-bottom: 16px;
 }
 
-.pagination {
-  display: flex;
-  justify-content: center;
-  margin-top: 16px;
-}
+/* 分页样式归 ListPager */
 
 @media (max-width: 768px) {
   .profile-grid {

@@ -3,6 +3,8 @@ import { onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { userApi } from '../api'
 import ArticleCard from '../components/ArticleCard.vue'
+import ListPager from '../components/ListPager.vue'
+import { useList } from '../useList'
 import { avatarSrc } from '../utils/avatar'
 
 const route = useRoute()
@@ -10,24 +12,29 @@ const userId = () => Number(route.params.id)
 const invalidId = () => !/^\d+$/.test(route.params.id)
 
 const user = ref(null)
-const articles = ref([])
-const total = ref(0)
-const page = ref(1)
-const size = ref(10)
-const loading = ref(false)
+/** 资料请求失败与「这个人不存在」是两件事,此前都渲染成同一句「用户不存在或已注销」。 */
+const profileFailure = ref(null)
+
+const {
+  records: articles,
+  total,
+  page,
+  size,
+  loading,
+  failure,
+  phase,
+  load: loadArticles,
+  goTo,
+} = useList(({ page: current, size: pageSize }) =>
+  userApi.articles(userId(), { page: current, size: pageSize }))
 
 async function loadProfile() {
-  user.value = await userApi.profile(userId())
-}
-
-async function loadArticles() {
-  loading.value = true
+  profileFailure.value = null
   try {
-    const data = await userApi.articles(userId(), { page: page.value, size: size.value })
-    articles.value = data.records
-    total.value = data.total
-  } finally {
-    loading.value = false
+    user.value = await userApi.profile(userId())
+  } catch (error) {
+    user.value = null
+    profileFailure.value = error?.response?.data?.message || error?.message || '资料加载失败'
   }
 }
 
@@ -53,6 +60,9 @@ onMounted(() => {
         </div>
       </div>
     </el-card>
+    <el-empty v-else-if="profileFailure" :description="profileFailure">
+      <el-button type="primary" @click="loadProfile">重试</el-button>
+    </el-empty>
     <el-empty v-else description="用户不存在或已注销" />
 
     <h3 class="section-title">TA 的文章</h3>
@@ -60,18 +70,12 @@ onMounted(() => {
       <template v-if="articles.length">
         <ArticleCard v-for="article in articles" :key="article.id" :article="article" />
       </template>
+      <el-empty v-else-if="phase === 'failed'" :description="failure">
+        <el-button type="primary" @click="loadArticles">重试</el-button>
+      </el-empty>
       <el-empty v-else description="还没有发布文章" />
     </div>
-    <div class="pagination">
-      <el-pagination
-        v-model:current-page="page"
-        :page-size="size"
-        :total="total"
-        layout="prev, pager, next, total"
-        background
-        @current-change="loadArticles"
-      />
-    </div>
+    <ListPager :page="page" :size="size" :total="total" @change="goTo" />
   </div>
 </template>
 
@@ -104,9 +108,5 @@ onMounted(() => {
   margin-bottom: 16px;
 }
 
-.pagination {
-  display: flex;
-  justify-content: center;
-  margin-top: 24px;
-}
+/* 分页样式归 ListPager */
 </style>

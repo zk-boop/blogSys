@@ -1,35 +1,25 @@
 <script setup>
-import { onMounted, ref } from 'vue'
+import { onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { adminApi } from '../../api'
 import { avatarSrc } from '../../utils/avatar'
+import ListPager from '../../components/ListPager.vue'
+import { useList } from '../../useList'
 
-const users = ref([])
-const total = ref(0)
-const page = ref(1)
-const size = ref(10)
-const keyword = ref('')
-const loading = ref(false)
-
-async function loadUsers() {
-  loading.value = true
-  try {
-    const data = await adminApi.users({
-      page: page.value,
-      size: size.value,
-      keyword: keyword.value || undefined,
-    })
-    users.value = data.records
-    total.value = data.total
-  } finally {
-    loading.value = false
-  }
-}
-
-function search() {
-  page.value = 1
-  loadUsers()
-}
+const {
+  records: users,
+  total,
+  page,
+  size,
+  keyword,
+  loading,
+  failure,
+  phase,
+  load: loadUsers,
+  search,
+  goTo,
+} = useList(({ page: current, size: pageSize, keyword: kw }) =>
+  adminApi.users({ page: current, size: pageSize, keyword: kw || undefined }))
 
 async function toggleBan(user) {
   const action = user.status === 1 ? '解封' : '封禁'
@@ -71,6 +61,16 @@ onMounted(loadUsers)
       </div>
     </template>
 
+    <el-alert
+      v-if="phase === 'failed'"
+      type="error"
+      :title="failure"
+      :closable="false"
+      show-icon
+      class="load-failure"
+    >
+      <el-button link type="primary" @click="loadUsers">重试</el-button>
+    </el-alert>
     <el-table v-loading="loading" :data="users" size="small">
       <el-table-column label="用户" min-width="180">
         <template #default="{ row }">
@@ -118,16 +118,7 @@ onMounted(loadUsers)
       </el-table-column>
     </el-table>
 
-    <div class="pagination">
-      <el-pagination
-        v-model:current-page="page"
-        :page-size="size"
-        :total="total"
-        layout="prev, pager, next, total"
-        background
-        @current-change="loadUsers"
-      />
-    </div>
+    <ListPager :page="page" :size="size" :total="total" align="end" @change="goTo" />
   </el-card>
 </template>
 
@@ -162,9 +153,8 @@ onMounted(loadUsers)
   color: var(--text-muted);
 }
 
-.pagination {
-  display: flex;
-  justify-content: flex-end;
-  margin-top: 16px;
+/* 分页样式归 ListPager —— 它按 align 保留各页原有的对齐方式 */
+.load-failure {
+  margin-bottom: 12px;
 }
 </style>

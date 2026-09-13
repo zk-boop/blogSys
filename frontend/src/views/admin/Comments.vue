@@ -1,36 +1,27 @@
 <script setup>
-import { onMounted, ref } from 'vue'
+import { onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { adminApi } from '../../api'
+import ListPager from '../../components/ListPager.vue'
+import { useList } from '../../useList'
 
 const router = useRouter()
-const comments = ref([])
-const total = ref(0)
-const page = ref(1)
-const size = ref(10)
-const keyword = ref('')
-const loading = ref(false)
 
-async function loadComments() {
-  loading.value = true
-  try {
-    const data = await adminApi.comments({
-      page: page.value,
-      size: size.value,
-      keyword: keyword.value || undefined,
-    })
-    comments.value = data.records
-    total.value = data.total
-  } finally {
-    loading.value = false
-  }
-}
-
-function search() {
-  page.value = 1
-  loadComments()
-}
+const {
+  records: comments,
+  total,
+  page,
+  size,
+  keyword,
+  loading,
+  failure,
+  phase,
+  load: loadComments,
+  search,
+  goTo,
+} = useList(({ page: current, size: pageSize, keyword: kw }) =>
+  adminApi.comments({ page: current, size: pageSize, keyword: kw || undefined }))
 
 async function removeComment(row) {
   await ElMessageBox.confirm('确定删除这条评论吗?', '删除评论', { type: 'warning' })
@@ -62,6 +53,16 @@ onMounted(loadComments)
       </div>
     </template>
 
+    <el-alert
+      v-if="phase === 'failed'"
+      type="error"
+      :title="failure"
+      :closable="false"
+      show-icon
+      class="load-failure"
+    >
+      <el-button link type="primary" @click="loadComments">重试</el-button>
+    </el-alert>
     <el-table v-loading="loading" :data="comments" size="small">
       <el-table-column label="评论内容" min-width="260" show-overflow-tooltip>
         <template #default="{ row }">{{ row.content }}</template>
@@ -84,16 +85,7 @@ onMounted(loadComments)
       </el-table-column>
     </el-table>
 
-    <div class="pagination">
-      <el-pagination
-        v-model:current-page="page"
-        :page-size="size"
-        :total="total"
-        layout="prev, pager, next, total"
-        background
-        @current-change="loadComments"
-      />
-    </div>
+    <ListPager :page="page" :size="size" :total="total" align="end" @change="goTo" />
   </el-card>
 </template>
 
@@ -121,9 +113,8 @@ onMounted(loadComments)
   color: var(--brand-color);
 }
 
-.pagination {
-  display: flex;
-  justify-content: flex-end;
-  margin-top: 16px;
+/* 分页样式归 ListPager —— 它按 align 保留各页原有的对齐方式 */
+.load-failure {
+  margin-bottom: 12px;
 }
 </style>

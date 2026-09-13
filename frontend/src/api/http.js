@@ -34,7 +34,12 @@ http.interceptors.response.use(
       session.unauthorized()
     }
     ElMessage.error(message || '网络错误')
-    return Promise.reject(error)
+    // 统一错误形状。此前这条分支把**原始 axios error** 抛出去,而上面那条抛的是
+    // new Error(message) —— 两种形状意味着每个调用方都得先判断自己拿到的是哪一种。
+    // 现在一律是 Error(message),原始响应挂在 .response 上备查。
+    const failure = new Error(message || '网络错误')
+    failure.response = error.response
+    return Promise.reject(failure)
   }
 )
 

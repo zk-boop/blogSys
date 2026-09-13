@@ -1,28 +1,46 @@
 <script setup>
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { articleApi, tagApi } from '../api'
 import ArticleCard from '../components/ArticleCard.vue'
+import ListPager from '../components/ListPager.vue'
+import { useList } from '../useList'
 import { formatCount } from '../utils/format'
 
 const route = useRoute()
 const router = useRouter()
 
-const articles = ref([])
 const tags = ref([])
 const hotArticles = ref([])
-const total = ref(0)
-const page = ref(1)
-const size = ref(10)
 const activeTag = ref(null)
-const loading = ref(true)
 
-const keyword = ref(route.query.keyword || '')
-
-// 这里原先有一条 watch(() => route.query.keyword) 的补偿:outlet 没有 key,于是
-// ?keyword= 变化不会重挂载本视图,只能自己监听、自己重置页码、自己重查。
-// 现在 App.vue 的 outlet 带上了 route identity(query 参与标识),本视图在搜索时会
-// 被重新挂载 —— 下面这两行的初始化即等价于原来那条 watcher,而它已经删掉了。
+// 列表的请求状态归 useList。取数函数只负责「这一页怎么取」——
+// 标签与关键词是首页自己的筛选条件,由闭包带走。
+//
+// 这里原先还有一条 watch(() => route.query.keyword) 的补偿:outlet 没有 key,于是
+// ?keyword= 变化不会重挂载本视图。现在 App.vue 的 outlet 带上了 route identity
+// (query 参与标识),搜索时本视图会被重新挂载 —— 下面这行初始化即等价于那条 watcher。
+const {
+  records: articles,
+  total,
+  page,
+  size,
+  keyword,
+  loading,
+  failure,
+  phase,
+  load: loadArticles,
+  goTo,
+} = useList(
+  ({ page: current, size: pageSize, keyword: search }) =>
+    articleApi.page({
+      page: current,
+      size: pageSize,
+      tagId: activeTag.value || undefined,
+      keyword: search || undefined,
+    }),
+  { initialKeyword: route.query.keyword || '' }
+)
 
 const maxTagCount = computed(() => {
   if (!tags.value.length) return 1
@@ -37,27 +55,10 @@ async function loadHot() {
   hotArticles.value = await articleApi.hot()
 }
 
-async function loadArticles() {
-  loading.value = true
-  try {
-    const data = await articleApi.page({
-      page: page.value,
-      size: size.value,
-      tagId: activeTag.value || undefined,
-      keyword: keyword.value || undefined,
-    })
-    articles.value = data.records
-    total.value = data.total
-  } finally {
-    loading.value = false
-  }
-}
-
-watch([page, activeTag], loadArticles)
-
 function selectTag(tagId) {
   activeTag.value = tagId
-  page.value = 1
+  // 换标签也回到第 1 页 —— 此前靠一条 watch([page, activeTag]) 顺带做到,那条 watch 已删掉
+  goTo(1)
 }
 
 function clearKeyword() {
@@ -98,19 +99,14 @@ onMounted(() => {
         <template v-if="articles.length">
           <ArticleCard v-for="article in articles" :key="article.id" :article="article" />
         </template>
-        <el-skeleton v-else-if="loading" animated :rows="5" style="padding: 12px" />
+        <el-skeleton v-else-if="phase === 'loading'" animated :rows="5" style="padding: 12px" />
+        <el-empty v-else-if="phase === 'failed'" :description="failure">
+          <el-button type="primary" @click="loadArticles">重试</el-button>
+        </el-empty>
         <el-empty v-else :description="keyword ? '没有找到相关文章' : '还没有文章,快来写第一篇吧'" />
       </div>
 
-      <div class="pagination">
-        <el-pagination
-          v-model:current-page="page"
-          :page-size="size"
-          :total="total"
-          layout="prev, pager, next, total"
-          background
-        />
-      </div>
+      <ListPager :page="page" :size="size" :total="total" @change="goTo" />
     </div>
 
     <aside class="side-col">
@@ -182,12 +178,6 @@ onMounted(() => {
 
 .tag-item {
   cursor: pointer;
-}
-
-.pagination {
-  display: flex;
-  justify-content: center;
-  margin-top: 24px;
 }
 
 .side-col {

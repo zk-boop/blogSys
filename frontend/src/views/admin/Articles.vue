@@ -4,36 +4,32 @@ import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { adminApi } from '../../api'
 import { formatCount } from '../../utils/format'
+import ListPager from '../../components/ListPager.vue'
+import { useList } from '../../useList'
 
 const router = useRouter()
-const articles = ref([])
-const total = ref(0)
-const page = ref(1)
-const size = ref(10)
-const keyword = ref('')
+/** 状态筛选是这一页自己的概念,由取数函数闭包带走。 */
 const statusFilter = ref('')
-const loading = ref(false)
 
-async function loadArticles() {
-  loading.value = true
-  try {
-    const data = await adminApi.articles({
-      page: page.value,
-      size: size.value,
-      keyword: keyword.value || undefined,
-      status: statusFilter.value === '' ? undefined : Number(statusFilter.value),
-    })
-    articles.value = data.records
-    total.value = data.total
-  } finally {
-    loading.value = false
-  }
-}
-
-function search() {
-  page.value = 1
-  loadArticles()
-}
+const {
+  records: articles,
+  total,
+  page,
+  size,
+  keyword,
+  loading,
+  failure,
+  phase,
+  load: loadArticles,
+  search,
+  goTo,
+} = useList(({ page: current, size: pageSize, keyword: kw }) =>
+  adminApi.articles({
+    page: current,
+    size: pageSize,
+    keyword: kw || undefined,
+    status: statusFilter.value === '' ? undefined : Number(statusFilter.value),
+  }))
 
 async function removeArticle(row) {
   await ElMessageBox.confirm(`确定删除文章「${row.title}」吗?此操作不可恢复。`, '删除文章', { type: 'warning' })
@@ -71,6 +67,16 @@ onMounted(loadArticles)
       </div>
     </template>
 
+    <el-alert
+      v-if="phase === 'failed'"
+      type="error"
+      :title="failure"
+      :closable="false"
+      show-icon
+      class="load-failure"
+    >
+      <el-button link type="primary" @click="loadArticles">重试</el-button>
+    </el-alert>
     <el-table v-loading="loading" :data="articles" size="small">
       <el-table-column label="标题" min-width="220" show-overflow-tooltip>
         <template #default="{ row }">
@@ -106,16 +112,7 @@ onMounted(loadArticles)
       </el-table-column>
     </el-table>
 
-    <div class="pagination">
-      <el-pagination
-        v-model:current-page="page"
-        :page-size="size"
-        :total="total"
-        layout="prev, pager, next, total"
-        background
-        @current-change="loadArticles"
-      />
-    </div>
+    <ListPager :page="page" :size="size" :total="total" align="end" @change="goTo" />
   </el-card>
 </template>
 
@@ -149,9 +146,8 @@ onMounted(loadArticles)
   color: var(--brand-color);
 }
 
-.pagination {
-  display: flex;
-  justify-content: flex-end;
-  margin-top: 16px;
+/* 分页样式归 ListPager —— 它按 align 保留各页原有的对齐方式 */
+.load-failure {
+  margin-bottom: 12px;
 }
 </style>
