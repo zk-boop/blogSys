@@ -17,6 +17,10 @@ blogSys 开发过程中真实遇到并解决的问题,按类别整理。每条�
 | 坑 | 现象 | 根因 | 解法/教训 |
 |---|---|---|---|
 | Integer 比较 | 状态判断偶尔不对 | `Integer == Integer` 只对缓存池(±128)内成立 | 一律 `Objects.equals` |
+| MyBatis-Plus 参数表惰性填充 | 断言绑定参数时参数表是空的 | `getParamNameValuePairs()` 只在 `getSqlSegment()` 渲染时才被填 | 测绑定之前先调一次 `getSqlSegment()` |
+| `inSql` 无法绑定参数 | 想参数化却拼出了裸 SQL | 3.5.7 只有 `inSql(R, String)`,没有 values 参数 | 要绑定就用 `apply(true, "… {0} …", 值)`;别用 `inSql` |
+| `apply` 只有布尔重载 | `apply(sql, values)` 编译不过 | 3.5.7 未提供双参便利版本 | 写 `apply(true, sql, values)` |
+| 测试里解析方法引用报错 | `LambdaQueryWrapper` 报 NPE 或找不到列 | 方法引用要靠 `TableInfo`,非 Spring 环境下没人初始化 | `TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), X.class)` |
 | Mockito 编译歧义 | `verify(...).insert(any())` 编译失败 | MyBatis-Plus 3.5.7 新增 `insert(Collection)` 重载,裸 `any()` 无法推断 | 显式类型 `any(User.class)` |
 | 日期格式化崩溃 | RSS 500:`UnsupportedTemporalTypeException` | `LocalDateTime` 无时区偏移,格式符 `Z` 报错 | `.atZone(ZoneId.systemDefault())` |
 | Security 重载消失 | `requestMatchers(HttpMethod, RequestMatcher...)` 编译不过 | Spring Security 6.x 无此重载 | 用 `{id:[0-9]+}` 变量正则 |
@@ -53,6 +57,26 @@ blogSys 开发过程中真实遇到并解决的问题,按类别整理。每条�
 | 删库遇外键 | DROP 失败 | 遗留表外键 | `FOREIGN_KEY_CHECKS=0` |
 | 功能砍了又后悔 | 头像只能填 URL | 需求确认时一刀切砍掉"上传" | 砍需求时问一句"高频操作用起来顺吗" |
 
+## 六、性能:别用理论争论子查询形式,测一次就有答案
+
+2026-09 实测,MySQL 8.0.36,临时表造假数据(2 万用户 / 6 万文章,已发布 90%),取最新 10 篇:
+
+| 写法 | 耗时 | 计划 |
+|---|---|---|
+| 不相关 `IN (SELECT id FROM users WHERE status = 0)` | **213 ms** | 扫 users → 按 `idx_user` 嵌套循环 → 排序 53400 行 |
+| 相关 `EXISTS (… WHERE u.id = a.user_id AND u.status = 0)` | **181 ms** | **完全相同的计划** |
+| 同上,但给 users 加 `(status,id)` 索引 | 0.059 ms | 沿 `idx_created` 倒序走,每行探一次主键 |
+| 同上,零 DDL 只加 `/*+ INDEX(a idx_created) */` | 0.171 ms | 同上 |
+| 同上,只加单列 `users(status)`(非复合) | 0.081 ms | 同上 |
+
+三条结论:
+
+1. **两种子查询形式性能等价** —— MySQL 8 把它们优化成同一个计划。选哪种只该看可读性与能否绑定参数,不该拿性能当理由。
+2. **复合索引不是必需的**,单列也行;甚至零 DDL 加个 index hint 就能拿到同样的快计划。
+3. **快慢的真正分水岭是连接顺序**:慢计划先扫 users 再 join,快计划沿 `idx_created` 倒序走、`LIMIT 10` 提前收工。索引在这里的作用不是被当作访问路径(内层用的仍是 `PRIMARY`),而是**扰动优化器的成本估算,把连接顺序翻了过来**。
+
+教训:这类问题靠读代码和推理永远得不出结论 —— 一排 `EXPLAIN ANALYZE` 就结束了。而且**今天的列表查询就踩在这个慢计划上**,它与可见性规则无关,是独立存在的性能债。
+
 ## 核心方法论
 
 1. 环境差异是第一坑源:Windows/PS5.1/代理/端口,先验证环境再写业务
@@ -61,3 +85,4 @@ blogSys 开发过程中真实遇到并解决的问题,按类别整理。每条�
 4. git 是后悔药:批量操作前先 commit/status,坏了能 checkout 救场
 5. 升级大版本先看 API:cropperjs v2、Spring Security 6 都是破坏性变更
 6. 前端兜底别兜错:错误处理要区分"真错误"和"正常流程"(导航取消、HTTP 200 的业务错误)
+7. 性能结论必须实测:子查询形式、索引、hint 的取舍,`EXPLAIN ANALYZE` 一次胜过一整轮争论

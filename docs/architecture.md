@@ -278,6 +278,7 @@ AI 子系统在 `docs/api.md` 只有 6 行；而 `docs/lessons.md` 全文 63 行
 | D10 | 25 轮左右撞上无解释的墙 | `ChatController.java:58` · `ChatService.java:42-43` · `api/ai.js:43-46` |
 | D11 | 缺失静态资源返回 500 而非 404（**已实测**） | `GlobalExceptionHandler.java:49-53` |
 | D12 | 同一搜索框，前后台对 `%` `_` 行为不一致 | `ArticleService.java:75` vs `:109-111` |
+| D13 | **列表查询潜伏约 1000 倍性能问题** —— 见 §7.4（本次实测，与可见性重构无关但同处一条查询） | `ArticleService.java:59-81` · `:93-102` |
 
 ### 7.2 会咬人的地方（来自 `docs/lessons.md`，均为真实踩过的坑）
 
@@ -298,6 +299,27 @@ AI 子系统在 `docs/api.md` 只有 6 行；而 `docs/lessons.md` 全文 63 行
 - **`stores/user.js:24` 的 `fetchMe()` 全库无调用者**，`isAdmin`（`:11`）直接读 localStorage 快照（`:7`）。
   管理员改动某人角色或封禁某人后，对方客户端在重新登录前仍按旧角色渲染。
   注意这**不是越权**：服务端 `JwtAuthFilter.java:39` 会直接拦截封禁用户，影响仅限于 UI 陈旧。
+
+### 7.4 列表查询潜伏约 1000 倍性能问题（实测，与可见性重构无关）
+
+2026-09-13 用临时表造假数据（2 万用户 / 6 万文章，已发布 90%）实测 `ArticleService.page` 那条查询形状：
+
+| 写法 | 耗时 | 计划 |
+|---|---|---|
+| 今天的形式：不相关 `IN (SELECT id FROM users WHERE status = 0)` | **213 ms** | 扫 users(2 万) → 按 `idx_user` 嵌套循环 → **排序 53400 行** |
+| 相关 `EXISTS` 形式 | 181 ms | **完全相同的计划** |
+| 给 `users` 加 `(status,id)` 索引 | 0.059 ms | 沿 `idx_created` 倒序、每行探主键、`LIMIT 10` 提前收工 |
+| **零 DDL，只加 `/*+ INDEX(a idx_created) */`** | 0.171 ms | 同上 |
+| 只加单列 `users(status)`（非复合） | 0.081 ms | 同上 |
+
+三点结论：
+
+1. **两种子查询形式性能等价**，MySQL 8 优化成同一计划 —— 所以选形式只该看可读性与能否绑定参数，不能拿性能当理由。
+2. **新索引不是必需的**：单列也行；零 DDL 加 hint 也行。设计阶段「相关 EXISTS 必须配 `users(status,id)`」的推断不成立。
+3. 真正的分水岭是**连接顺序**。索引在此不是被当作访问路径（内层用的仍是 `PRIMARY`），而是扰动了优化器的成本估算，把顺序翻了过来。
+
+`idx_status` 那类索引在这里是**症状**，不是病根：病根是「先扫 users 再 join」这个错误估算。详情与教训见 `docs/lessons.md` 第六节。
+本次重构**不动**这条查询的形状（保证不引入回归），性能问题作为独立候选另行处理。
 
 ---
 
