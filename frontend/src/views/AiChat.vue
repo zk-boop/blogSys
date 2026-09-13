@@ -77,6 +77,7 @@ function retry() {
     messages.value.pop()
     const question = messages.value[messages.value.length - 1]?.content
     if (question) {
+      messages.value.pop()
       send(question)
     }
   }
