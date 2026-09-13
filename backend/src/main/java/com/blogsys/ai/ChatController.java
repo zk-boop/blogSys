@@ -9,6 +9,7 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.Size;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.MediaType;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -19,11 +20,13 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.Executor;
+import java.util.concurrent.RejectedExecutionException;
 
 @RestController
 @RequestMapping("/api/ai")
 @RequiredArgsConstructor
 @Validated
+@Slf4j
 public class ChatController {
 
     private final ChatService chatService;
@@ -54,13 +57,26 @@ public class ChatController {
         // 这是「谁在问」穿过 seam 的那一步。它决定模型能看到哪些工具;域层(可见性模块)
         // 读到的 viewer 则由 AiExecutorConfig 的 TaskDecorator 从同一个请求线程带过去。
         Viewer viewer = viewerSource.current();
-        chatExecutor.execute(() -> {
+        try {
+            chatExecutor.execute(() -> {
+                try {
+                    chatService.chat(messages, new SseWriterHttp(servletResponse, sseProtocol), viewer);
+                } finally {
+                    asyncContext.complete();
+                }
+            });
+        } catch (RejectedExecutionException e) {
+            // 队列也满了。这是唯一一条**必须由提交方自己收尾**的路径:
+            // 拒绝时那个 lambda 从不执行,于是 `asyncContext.complete()` 也从不执行,
+            // 而 `setTimeout(0L)` 让请求本身没有期限 —— 客户端什么也收不到,只会一直等。
+            // 一次「服务器忙」在客户端上表现得和「AI 卡住了」一模一样。
+            log.warn("AI 对话被拒绝(线程池已满): {}", e.getMessage());
             try {
-                chatService.chat(messages, new SseWriterHttp(servletResponse, sseProtocol), viewer);
+                new SseWriterHttp(servletResponse, sseProtocol).failed("AI 助手当前忙,请稍后重试");
             } finally {
                 asyncContext.complete();
             }
-        });
+        }
     }
 
     public record ChatRequest(
