@@ -59,7 +59,7 @@ import static org.mockito.Mockito.when;
  * </ol>
  *
  * <p>本测试负责的是 service 与模块之间的契约:模块说不可见时,service 必须抛出
- * 与「不存在」完全相同的 404;以及浏览量只在已发布时递增。
+ * 与「不存在」完全相同的 404;以及<b>「读详情」里没有任何写、「记浏览」才是唯一的写入点</b>。
  */
 @ExtendWith(MockitoExtension.class)
 class ArticleServiceTest {
@@ -154,8 +154,8 @@ class ArticleServiceTest {
     }
 
     @Test
-    @DisplayName("已发布:返回详情,并且浏览量 +1")
-    void detail_shouldIncrementViewCount_whenPublished() {
+    @DisplayName("已发布:返回详情,且不写库 —— 读操作没有任何副作用")
+    void detail_shouldBeAPureRead_whenPublished() {
         when(articleMapper.selectOne(any())).thenReturn(article(3L, 3L, 1, 5));
         stubAttachments();
 
@@ -163,13 +163,15 @@ class ArticleServiceTest {
 
         assertEquals(3L, vo.getId());
         assertEquals("正文", vo.getContent());
-        assertEquals(6, vo.getViewCount(), "返回给前端的浏览量应当已经含本次");
-        verify(articleMapper).incrViewCount(3L);
+        assertEquals(5, vo.getViewCount(), "detail 不再自己 +1 —— 记浏览是调用方显式做的事");
+        // D2:就是这一条被 AI 工具路径踩中 —— 每查一次详情,那篇文章就被加热一次,
+        // 而浏览量正是 hot() 的排序依据。
+        verify(articleMapper, never()).incrViewCount(any());
     }
 
     @Test
-    @DisplayName("草稿(作者本人可见):不递增浏览量 —— 与迁移前一致")
-    void detail_shouldNotIncrementViewCount_whenDraft() {
+    @DisplayName("草稿(作者本人可见):同样不写库")
+    void detail_shouldBeAPureRead_whenDraft() {
         when(articleMapper.selectOne(any())).thenReturn(article(16L, 3L, 0, 0));
         stubAttachments();
 
@@ -177,6 +179,42 @@ class ArticleServiceTest {
 
         assertEquals(16L, vo.getId());
         assertEquals(0, vo.getViewCount());
+        verify(articleMapper, never()).incrViewCount(any());
+    }
+
+    @Test
+    @DisplayName("记浏览:已发布才 +1")
+    void recordView_shouldIncrement_whenPublished() {
+        when(articleMapper.selectOne(any())).thenReturn(article(3L, 3L, 1, 5));
+
+        serviceFor(Viewer.anonymous()).recordView(3L);
+
+        verify(articleMapper).incrViewCount(3L);
+    }
+
+    @Test
+    @DisplayName("记浏览:草稿不计 —— 与拆分前一致")
+    void recordView_shouldNotIncrement_whenDraft() {
+        when(articleMapper.selectOne(any())).thenReturn(article(16L, 3L, 0, 0));
+
+        serviceFor(Viewer.of(3L, false)).recordView(16L);
+
+        verify(articleMapper, never()).incrViewCount(any());
+    }
+
+    @Test
+    @DisplayName("记浏览:不可见与不存在抛同一个 404,且不落任何写")
+    void recordView_shouldThrowCanonical404_whenNotVisible() {
+        when(articleMapper.selectOne(any())).thenReturn(null);
+
+        BizException absent = assertThrows(BizException.class,
+                () -> serviceFor(Viewer.anonymous()).recordView(999L));
+        BizException invisible = assertThrows(BizException.class,
+                () -> serviceFor(Viewer.anonymous()).recordView(5L));
+
+        assertEquals(404, absent.getCode());
+        assertEquals(absent.getCode(), invisible.getCode());
+        assertEquals(absent.getMessage(), invisible.getMessage());
         verify(articleMapper, never()).incrViewCount(any());
     }
 
@@ -208,6 +246,6 @@ class ArticleServiceTest {
         ArticleDetailVO vo = serviceFor(Viewer.of(3L, true)).detail(5L);
 
         assertEquals(5L, vo.getId());
-        verify(articleMapper).incrViewCount(5L);
+        verify(articleMapper, never()).incrViewCount(any());
     }
 }

@@ -44,6 +44,11 @@ public class ArticleController {
 
     @GetMapping("/{id}")
     public Result<ArticleDetailVO> detail(@PathVariable Long id) {
+        // 先记一次浏览,再读详情 —— 响应里的 viewCount 因此与旧行为逐字一致(含本次)。
+        //
+        // 顺序与位置都是有意的:「有人打开了页面」是 HTTP 层知道、而 AI 工具路径不知道的事。
+        // 把它放在这里,detail 就成了一次纯读,AI 再怎么查也不会改动任何数据。
+        articleService.recordView(id);
         return Result.ok(articleService.detail(id));
     }
 

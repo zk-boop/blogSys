@@ -119,12 +119,16 @@ public class ArticleService {
                 attachUserAndTags(result.getRecords()));
     }
 
+    /**
+     * 一篇文章的详情。
+     *
+     * <p><b>这是一次纯读,不产生任何副作用。</b>「浏览量 +1」曾经长在这个方法里,于是
+     * AI 工具路径({@code ArticleDetailTool})每查一次详情就给那篇文章加热一次 ——
+     * 而浏览量正是 {@code hot()} 的排序依据。记浏览现在由调用方显式表达:
+     * HTTP 层调 {@link #recordView(Long)},AI 工具路径不调。
+     */
     public ArticleDetailVO detail(Long id) {
         Article article = visibility.articles().includingOwnDrafts().require(id).article();
-        if (ArticleStatus.of(article.getStatus()) == ArticleStatus.PUBLISHED) {
-            articleMapper.incrViewCount(id);
-            article.setViewCount(article.getViewCount() + 1);
-        }
 
         ArticleDetailVO vo = new ArticleDetailVO();
         copyBase(article, vo);
@@ -133,6 +137,22 @@ public class ArticleService {
         vo.setFavorited(isFavoritedByCurrentUser(id));
         attachAuthorAndTags(vo, article);
         return vo;
+    }
+
+    /**
+     * 记一次浏览 —— <b>全库唯一</b>一处让 {@code view_count} 增加的入口。
+     *
+     * <p>与 {@link #detail(Long)} 同一口径地判可见性:不可见即不存在,抛同一个 404。
+     * 只有已发布的文章计数,草稿(含作者本人和管理员看到的)不计 —— 与迁移前一致。
+     *
+     * <p>它被单独拆出来的理由是可证伪的一点:<b>「只读」应当由构造保证,而不是靠调用方
+     * 记得传一个 readonly 标志。</b>现在读操作里没有写,所以没有任何标志需要传错。
+     */
+    public void recordView(Long id) {
+        Article article = visibility.articles().includingOwnDrafts().require(id).article();
+        if (ArticleStatus.of(article.getStatus()) == ArticleStatus.PUBLISHED) {
+            articleMapper.incrViewCount(id);
+        }
     }
 
     @Transactional
