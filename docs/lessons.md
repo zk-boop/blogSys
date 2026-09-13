@@ -54,6 +54,7 @@ blogSys 开发过程中真实遇到并解决的问题,按类别整理。每条�
 | Docker 拉不到镜像 | `dial tcp ... connectex` | Docker Hub 被墙;Docker Desktop 代理配置字段随版本变 | 最稳的是 registry-mirrors 加速器 |
 | jar 打包失败 | `Unable to rename` | Windows 下运行中的进程锁住 jar | 先停进程再打包 |
 | 端口冲突 | 起不来 | 本地 MySQL 3306 已被占用 | 容器端口映射改 3307 |
+| **按进程名杀进程** | 脚本收尾「清理我起的无头浏览器」,把使用者**正在用的浏览器**一起杀了(5 次) | `Get-Process chrome \| Stop-Process -Force` 按**名字**匹配,不区分是谁起的进程 | 只杀自己起的那个:`Start-Process -PassThru` 留下 PID,收尾 `Stop-Process -Id $proc.Id`;它派生的子进程用自动化的专用参数(如 `--user-data-dir=<自己的目录>`)从命令行里精确筛。**永远不要按进程名杀** |
 
 ## 五、数据与流程
 
