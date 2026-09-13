@@ -135,6 +135,28 @@
 | 修掉 | **「请求失败」不可表达** —— 15 个 view 只有 1 个 catch、零个错误态,失败被渲染成「还没有文章,快来写第一篇吧」;另修 UserProfile 把资料失败说成「用户不存在」、`http.js` 两种错误形状 |
 | 测试 | 32 → 45;真实核对用 `Network.setBlockedURLs` 掐断接口,确认界面说「失败」而不是「没有数据」 |
 
+## v5 已完成:两个小缺陷 D11 / D12
+
+详见 `docs/architecture.md` §18。
+
+| 项 | 说明 |
+|---|---|
+| D11 | 缺失静态资源由 500 改回 404(新增 `NoResourceFoundException` 处理器)。未知非静态路径仍 401 —— 那是既有鉴权策略,改它是个新决定 |
+| D12 | LIKE 转义规则从 `ArticleService` 的私有方法提升为 `common/LikePattern`,补上后台三处漏掉的调用 |
+| 测试 | 140 → 145 |
+
+## v5 待办:C 节的七项(评审报告 C 节,尚未开工)
+
+| # | 项 | 说明 |
+|---|---|---|
+| C1 | viewer 作为被接受的依赖 | 工具层已显式(候选 02);域层仍走 `ViewerSource`。三处 `catch → false` 的匿名分支与 `AdminService` 的守卫因此都没有测试 |
+| C2 | 上传资产的命名约定散在三处 | 写方生成 `base + "-thumb.jpg"`;读方用正则反推;而 `saveOriginal` 对 jpg/png/gif 之外的原图不写缩略图 ⇒ 会合成一个从未写入的文件名,列表页去请求它就会 404 |
+| C3 | 工具结果没有信封 | 参数强转被复制三次;schema 无 `required`;错误是字符串拼的 JSON(驱动消息里一个引号就能造出坏 JSON);截断两处且都可能切在字符串中间;`AbstractTool` 无抽象成员;`json()` 把序列化失败吞成假成功;`toolResult` 收了 name 又丢掉;`ToolRegistry` 用 `Collectors.toMap` 建表,重名会在启动时崩 |
+| C4 | 对话生命周期与取消不在内核里 | 稳态并发 2、另 20 个静默排队(见 §5.5);拒绝时客户端收不到任何 SSE 错误;轮与轮之间无存活检查 ⇒ 浏览器「停止」传不到服务端;无心跳帧 |
+| C5 | 用户显示的 fallback 约 20 份 | `nickname \|\| username` 散在 9 个 module;`avatarSrc` 藏了「dicebear URL 一律丢弃」这条规则 |
+| C6 | 懒加载失败兜底横跨三处 | `router/index.js` 的单槽注册表(第二个订阅者会静默顶掉第一个)+ `App.vue` 的三条重试路径;`app.config.errorHandler` 从不设置 |
+| C7 | 「登录后刷新用户」从未被调用 | `stores/user.js` 的 `fetchMe()` 全库无调用者;`isAdmin` 来自登录那一刻的 localStorage 快照 ⇒ 管理员改了别人的角色/封禁后,对方客户端在重新登录前仍按旧角色渲染(不是越权:服务端 `JwtAuthFilter` 会拦) |
+
 ## v5 候选(来自 2026-09-13 架构评审,8 个候选里已完成 8 个)
 
 完整论证与前后对照图见 `docs/architecture-review-2026-09-13.html`(HTML,含 Mermaid 图)。
