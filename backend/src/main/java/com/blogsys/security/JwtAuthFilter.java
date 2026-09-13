@@ -1,5 +1,6 @@
 package com.blogsys.security;
 
+import com.blogsys.common.UserStatus;
 import com.blogsys.entity.User;
 import com.blogsys.mapper.UserMapper;
 import io.jsonwebtoken.Claims;
@@ -36,7 +37,9 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                 Claims claims = jwtUtil.parse(token);
                 Long userId = Long.valueOf(claims.getSubject());
                 User user = userMapper.selectById(userId);
-                if (user == null || Integer.valueOf(1).equals(user.getStatus())) {
+                // 「被封禁者不能通过鉴权」是认证规则,不是可见性规则 —— 留在过滤器这里,
+                // 只统一用 UserStatus 说话。未知状态值经 of 一律 fail closed 到封禁。
+                if (user == null || UserStatus.of(user.getStatus()).isBanned()) {
                     SecurityContextHolder.clearContext();
                 } else {
                     LoginUser loginUser = new LoginUser(userId, user.getUsername(), user.getRole());

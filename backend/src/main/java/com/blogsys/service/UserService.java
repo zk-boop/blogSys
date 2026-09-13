@@ -53,6 +53,9 @@ public class UserService {
             throw new BizException(404, "用户不存在");
         }
         UserVO vo = AuthService.toVO(user);
+        // 注意:这里的 articleCount 是「已发布文章数」;
+        // AdminService.users 里同名字段是「全部文章数(含草稿)」。同一个字段名两种含义
+        // 是既有的命名冲突,改动它会动到前端契约,所以本次只在两处写明,不静默改名。
         vo.setArticleCount(articleMapper.selectCount(Wrappers.<Article>lambdaQuery()
                 .eq(Article::getUserId, userId)
                 .eq(Article::getStatus, ArticleStatus.PUBLISHED.getValue())));

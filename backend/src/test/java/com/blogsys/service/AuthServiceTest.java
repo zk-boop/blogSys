@@ -78,6 +78,10 @@ class AuthServiceTest {
         user.setUsername("alice");
         user.setPassword(passwordEncoder.encode("secret1"));
         user.setRole("USER");
+        // status 必须显式设:UserStatus.of 对 null 是 fail closed 到「已封禁」。
+        // 生产库里 users.status 是 NOT NULL DEFAULT 0,所以 null 不可达;
+        // 但一个「内存里造出来的用户」本就该有状态,不设是夹具建模不完整。
+        user.setStatus(0);
         when(userMapper.selectOne(any())).thenReturn(user);
 
         LoginRequest request = new LoginRequest();

@@ -2,6 +2,7 @@ package com.blogsys.service;
 
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.blogsys.common.BizException;
+import com.blogsys.common.UserStatus;
 import com.blogsys.dto.LoginRequest;
 import com.blogsys.dto.RegisterRequest;
 import com.blogsys.entity.User;
@@ -44,7 +45,9 @@ public class AuthService {
         if (user == null || !passwordEncoder.matches(request.getPassword(), user.getPassword())) {
             throw new BizException("用户名或密码错误");
         }
-        if (Integer.valueOf(1).equals(user.getStatus())) {
+        // 「被封禁者不能登录」是认证规则,不是可见性规则 —— 所以它留在认证这里,
+        // 只是统一用 UserStatus 说话,不再写裸数字。未知状态值经 of 一律 fail closed。
+        if (UserStatus.of(user.getStatus()).isBanned()) {
             throw new BizException(403, "账号已被封禁,请联系管理员");
         }
         return buildAuthResponse(user);
