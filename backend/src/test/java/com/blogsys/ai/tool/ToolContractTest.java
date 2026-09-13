@@ -119,4 +119,37 @@ class ToolContractTest {
     private Map<String, Object> parameters(com.blogsys.ai.ToolDefinition definition) {
         return (Map<String, Object>) definition.function().parameters();
     }
+
+    // ---------- 序列化失败 ----------
+
+    @Test
+    @DisplayName("序列化失败要留下痕迹 —— 那个 catch 此前是个黑洞")
+    void json_shouldLogAndReturnAnEnvelope_whenSerializationFails() {
+        ch.qos.logback.classic.Logger logger =
+                (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(AbstractTool.class);
+        ch.qos.logback.core.read.ListAppender<ch.qos.logback.classic.spi.ILoggingEvent> appender =
+                new ch.qos.logback.core.read.ListAppender<>();
+        appender.start();
+        logger.addAppender(appender);
+        try {
+            String result = AbstractTool.json(mapper, cyclic());
+
+            assertTrue(result.contains("结果序列化失败"), "仍然要给出一段 JSON,实际: " + result);
+            assertTrue(appender.list.stream()
+                            .anyMatch(event -> event.getLevel() == ch.qos.logback.classic.Level.WARN),
+                    "失败必须留下痕迹 —— 否则它与一个正常的工具结果长得一模一样");
+        } finally {
+            logger.detachAppender(appender);
+        }
+    }
+
+    /** 一个 JSON 序列化不了的对象(自引用 ⇒ 无限递归)。 */
+    private Object cyclic() {
+        return new Object() {
+            @SuppressWarnings("unused")
+            public Object getSelf() {
+                return this;
+            }
+        };
+    }
 }

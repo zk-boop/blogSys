@@ -9,12 +9,26 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 
 import java.util.Map;
 
+import lombok.extern.slf4j.Slf4j;
+
+@Slf4j
 public abstract class AbstractTool implements AgentTool {
 
+    /**
+     * 序列化工具结果。
+     *
+     * <p>失败时返回一个错误信封,而不是抛出 —— 工具契约是「返回一段给模型看的 JSON 文本」,
+     * 所以这里必须给出点什么。
+     *
+     * <p>但**至少留下痕迹**:这段 catch 此前是个黑洞 —— 它返回的
+     * {@code {"error":"结果序列化失败"}} 与一个正常的工具结果长得一样,调用者(以及读日志的人)
+     * 无法察觉「这个工具其实没跑完」。失败被降级成一个正常的返回值,而没有任何记录。
+     */
     protected static String json(ObjectMapper objectMapper, Object value) {
         try {
             return objectMapper.writeValueAsString(value);
         } catch (JsonProcessingException e) {
+            log.warn("工具结果序列化失败: {}", value == null ? "null" : value.getClass().getName(), e);
             return "{\"error\":\"结果序列化失败\"}";
         }
     }
