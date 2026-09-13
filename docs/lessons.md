@@ -21,6 +21,11 @@ blogSys 开发过程中真实遇到并解决的问题,按类别整理。每条�
 | `inSql` 无法绑定参数 | 想参数化却拼出了裸 SQL | 3.5.7 只有 `inSql(R, String)`,没有 values 参数 | 要绑定就用 `apply(true, "… {0} …", 值)`;别用 `inSql` |
 | `apply` 只有布尔重载 | `apply(sql, values)` 编译不过 | 3.5.7 未提供双参便利版本 | 写 `apply(true, sql, values)` |
 | 测试里解析方法引用报错 | `LambdaQueryWrapper` 报 NPE 或找不到列 | 方法引用要靠 `TableInfo`,非 Spring 环境下没人初始化 | `TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), X.class)` |
+| 排序被塞进 `and(Consumer)` | 生成的 SQL 变成 `AND (ORDER BY ...)`,非法 | `and()` 会用括号包出一个**嵌套条件**,而排序不是条件 | 排序直接作用在外层 wrapper,不要经 `and()` |
+| 不可变构建器 + `Consumer` 配错 | 配置写了却完全没生效,一批用例同时红 | `where()` 返回新实例,`Consumer` 把返回值丢掉了 | 用 `UnaryOperator`,或写 `q = q.where(...)` |
+| 线程局部泄漏到别的测试类 | 同一用例单跑通过、全量跑失败 | `SecurityContextHolder` 是线程局部的,寿命比测试类长;有测试类塞了登录态却不清理 | 测试类**前后都清**;共用全局状态的测试必须自己负责还原 |
+| fail closed 打到测试夹具 | 用例突然报「账号已被封禁」 | 测试造的用户没设 `status`,而 `UserStatus.of(null)` 是 fail closed | 生产列是 `NOT NULL`,所以是夹具建模不完整 —— 补上显式值,别改判定方向 |
+| Mockito 严格模式报「桩多余」 | 删掉一段逻辑后测试失败,说某个 stub 没人用 | 严格模式会把**没用到的桩**当失败 | 这不是麻烦,是免费信号:它当场告诉我这次迁移少查了一次库 |
 | Mockito 编译歧义 | `verify(...).insert(any())` 编译失败 | MyBatis-Plus 3.5.7 新增 `insert(Collection)` 重载,裸 `any()` 无法推断 | 显式类型 `any(User.class)` |
 | 日期格式化崩溃 | RSS 500:`UnsupportedTemporalTypeException` | `LocalDateTime` 无时区偏移,格式符 `Z` 报错 | `.atZone(ZoneId.systemDefault())` |
 | Security 重载消失 | `requestMatchers(HttpMethod, RequestMatcher...)` 编译不过 | Spring Security 6.x 无此重载 | 用 `{id:[0-9]+}` 变量正则 |
@@ -86,3 +91,8 @@ blogSys 开发过程中真实遇到并解决的问题,按类别整理。每条�
 5. 升级大版本先看 API:cropperjs v2、Spring Security 6 都是破坏性变更
 6. 前端兜底别兜错:错误处理要区分"真错误"和"正常流程"(导航取消、HTTP 200 的业务错误)
 7. 性能结论必须实测:子查询形式、索引、hint 的取舍,`EXPLAIN ANALYZE` 一次胜过一整轮争论
+8. mock 测试证明不了 SQL:谓词活在 SQL 里,而 mock 的 mapper 不分 viewer 一律返回桩定的行。
+   别让这种用例冒充端到端证明 —— 要么断言发出的 SQL 文本,要么拿真实数据核对,要么上真库
+9. 「不可见」与「不存在」必须**逐字**同一个响应:两处消息稍有差别就是一个存在性预言机
+10. 规则收敛时,方向比彻底更重要:忘了登记安全选项 = 少看见(可接受),
+    忘了应用过滤 = 泄漏(不可接受)。设计时让前者成为默认
