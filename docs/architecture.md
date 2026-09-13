@@ -644,5 +644,74 @@ CDP 做了一次真浏览器核对。第一版核对**全绿**，但它是假的
 - **没有心跳帧，响应头要到第一个 token 才 flush**（§5.5 原有）。
 - §12.5 的 SFC 层测试缺口与一次性核对模式在此同样适用。
 
+---
+
+## 14. 让 session 只有一个归属：结果（2026-09-13）
+
+候选 05。「带上 token；遇到 401 就登出并跳 `/login`」此前有 **3 份实现**（axios 拦截器、
+fetch 助手、router 守卫）**加 4 处 view 复制**，7 个地方能重定向，其中一处
+（`ArticleDetail.vue` 的 `loginRequired`）还是死代码。于是「会话过期之后会发生什么」，
+没有任何一处能回答。
+
+### 14.1 这个 module 不 import 任何东西
+
+`src/session.js` 的全部依赖都是注入的 port：
+
+```js
+createSession({ readToken, clearAuth, currentPath, navigate, notify })
+```
+
+生产接线在 `session-instance.js`（localStorage 由 Pinia 持有、vue-router 负责跳转、
+element-plus 负责提示）；测试接线是 `session.test.js` 里几个内存对象。**这才叫
+「两个真 adapter 共用一个 seam」** —— 与 `SseWriter` 同理，不同的是这里的第二个 adapter
+不是测试的产物，而是真实存在的第二种传输。
+
+`session-instance.js` 用动态 `import('./router')` 拿 router：守卫要用这个 session，
+静态 import 会成环。
+
+### 14.2 三件事各只有一个主人
+
+| 归谁 | 谁不再做这件事 |
+|---|---|
+| `authHeaders()` | `api/ai.js` 里那份逐字重建的请求头 |
+| `unauthorized()` —— 已登出过就不再重复跳转（并发请求会同时拿到 401） | `http.js` 两处、`ai.js` 一处各自的 logout + push |
+| `loginTarget()` —— 带上回来的路 | 7 处裸跳 `/login`（此前只有守卫带了 `redirect`，登录完回不到原页） |
+
+view 只问一个问题：`requireLogin()`。`ArticleDetail` 两处、`CommentItem` 一处照此改写，
+死代码 `loginRequired()` 删除。
+
+顺带把 `recommendApi` 从 `api/ai.js` 挪到 `api/index.js` —— 它是普通 REST 调用，
+停在 fetch module 里只是为了蹭一句 `import http`。
+
+### 14.3 证据
+
+**自动化** 10 → 21（`session.test.js` 11 条：token 注入、跳转目标三种情形、
+401 反应含「并发只跳一次」、`requireLogin`）。
+
+**接线核对**（系统 Chrome + CDP，只在未登录态操作，不写任何数据）：
+
+| 探针 | 结果 |
+|---|---|
+| 未登录访问 `/me` | 跳登录页，`redirect` 解析为 `/me` |
+| 未登录访问 `/write?x=1` | `redirect` 解析为 `/write?x=1`（编码没弄坏它） |
+| 未登录在文章页点「点赞」 | view 不再自己跳，`redirect` 解析为 `/article/3` |
+
+**为什么断言的不是 URL 字面量**：vue-router 会把守卫返回的字符串 location 解析后再生成
+URL（`%2Fme` 正规化成 `/me`），而 `router.push` 那条路保留了 `encodeURIComponent` 的结果。
+两条路的 URL 写法不同，但解析出来的 `redirect` 都正确 —— 所以断言的必须是后者。
+第一版核对正是断言字面量，于是把一个**行为正确**的路径报成了 FAIL。
+**测试写错与代码写错长得一样，区别只在你去读哪一个。**
+
+### 14.4 仍未覆盖的
+
+- **两条路发出的 URL 写法不一致**（守卫那条不带百分号编码，`push` 那条带）。
+  今天两者都能正确解析，所以没有改；但它是一处「同一个意图、两种形态」的残留，
+  真要统一应让 session 返回结构化的 location 而不是字符串。
+- **`stores/user.js` 的 `fetchMe()` 仍无人调用**，`isAdmin` 依然来自登录那一刻的
+  localStorage 快照（§C 节记录）。本候选只统一了策略，没有动这条。
+- **401 之后的界面状态没有核对**：只验了跳转与 `redirect`，没有验「登出后页面上的
+  点赞按钮确实回到未登录态」。
+- §12.5 的 SFC 层测试缺口与一次性核对模式在此同样适用。
+
 
 
