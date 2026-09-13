@@ -784,5 +784,77 @@ URL（`%2Fme` 正规化成 `/me`），而 `router.push` 那条路保留了 `enco
 - **没有心跳帧，响应头要到第一个 token 才 flush**（§5.5 原有）。
 - §12.5 的 SFC 层测试缺口与一次性核对模式在此同样适用。
 
+---
+
+## 16. 给文章→列表项的投影一个家：结果（2026-09-13）
+
+候选 08。
+
+### 16.1 两个 assembly，第二份已经在漂移
+
+`ArticleListItemVO` 的组装此前被写了两次：
+
+| 副本 | 位置 | 作者解析 | `coverThumb` |
+|---|---|---|---|
+| ① | `ArticleService.copyBase` + `attachUserAndTags` + `findTagsByArticles` | 一次批量 | ✅ |
+| ② | `RecommendService.build` | **候选循环里逐篇查**（上限 100） | ❌ 漏了 |
+
+这份漂移一直没被发现，因为三件事同时成立：前端用 `article.coverThumb || article.cover`
+把它悄悄降级掩盖了；单测的 `userService` 是 mock，**数不出查询次数**；而两份实现在各自的
+测试里都「通过」。
+
+### 16.2 一个 module，两条路径
+
+`ArticleListItems`：
+
+| interface | 含义 |
+|---|---|
+| `of(articles)` | 批量投影。作者与标签**各查一次，与条数无关** —— 这就是「列表」在这里的全部含义 |
+| `fill(article, vo)` | 单篇填充，用泛型把详情 VO（它是子类）原样还回去 |
+
+`ArticleService` 丢掉 `copyBase` / `attachUserAndTags` / `attachAuthorAndTags` /
+`findTagsByArticles` / `coverThumbOf` 与 `userService`；`RecommendService` 丢掉 `build`
+与 `userService`，流程改成「先算分、排序、截到前 N，**再一次性投影**」——
+于是查询次数与返回条数无关。缩略图命名的回退规则（webp 与非 `/uploads` 路径返回原图）
+也随之只有一个主人。
+
+前端 `ArticleCard` 改用 `article.coverThumb`，删掉 `|| article.cover`：那张回退规则属于
+投影模块，前端再实现一遍等于给同一个决定留了两个主人 —— 而且正是它掩盖了这份漂移。
+
+### 16.3 证据
+
+**自动化** 133 → 140。`ArticleListItemsTest` 里两条钉住的是**曾经静默失效的性质**：
+
+- 五篇文章、五位作者 ⇒ `findByIds` 恰好 **1 次**、标签查询恰好 **1 次**（把次数写死成断言，
+  这是那笔 N+1 唯一的防线）；
+- 每一条都带 `coverThumb`（含 webp 退回原图、空封面两种情况）。
+
+另加 `RecommendServiceTest` 一条：推荐结果与其它列表形状一致。
+`ArticleServiceTest` / `RecommendServiceTest` 的构造随之改传投影模块 —— 用的是同一批 mock，
+所以投影的查询次数在那边也能被数出来。
+
+**真实核对**（本地 MySQL；数据不是合成的，但推荐需要标签重叠，而现有数据里只有文章 3 与
+草稿 16 有标签，故临时加一条关联，事后逐字还原）：
+
+```
+事前 article_tags = 3-3 3-4 3-5 16-14
+临时给文章 10 打上 #随笔(tag_id=5,与文章 3 重叠)
+GET /api/articles/3/recommend?size=5 →
+  id=10  cover=/uploads/a25c...png  coverThumb=/uploads/a25c...-thumb.jpg  tags=#随笔  score=5
+有封面却缺 coverThumb 的条目: 0        ← 迁移前这一条必然缺
+删掉关联后 article_tags = 3-3 3-4 3-5 16-14
+```
+
+### 16.4 仍未覆盖的
+
+- **上传资产的命名约定仍散着**（§C 节）：写方在 `UploadController` 生成 `base-thumb.jpg`，
+  读方在投影模块用正则反推，而 `saveOriginal` 对 jpg/png/gif 之外的原图根本不写缩略图 ——
+  那时投影会合成一个从未写入的文件名。本候选把**读**这一侧收成了一处，**写**那一侧没动。
+- **`tags` 字段的形状仍是「有顺序的字符串数组」**，顺序来自关联表而没有任何显式约定；
+  两条路径现在同源，所以一致，但顺序本身仍然不是契约。
+- 推荐的候选打分仍会对全部候选跑一次 `tagsOf`（批量，与条数无关）—— 这不是 N+1，
+  但候选上限 100 意味着那一步的 SQL 每次都扫 100 篇的关联；要优化应连同 §7.4 的连接顺序一起看。
+- §12.5 的 SFC 层测试缺口与一次性核对模式在此同样适用。
+
 
 

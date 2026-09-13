@@ -114,7 +114,18 @@
 | 测试 | 后端 126 → 133 · 前端 21 → 32;另做跨语言集成核对(真实字节按 7 字符碎片喂给前端解析器) |
 | 契约 | `docs/api.md` 那张表升格为跨语言契约的单一出处 |
 
-## v5 候选(来自 2026-09-13 架构评审,8 个候选里已完成 6 个)
+## v5 已完成:给文章→列表项的投影一个家(候选 08)
+
+详见 `docs/architecture.md` §16。
+
+| 项 | 说明 |
+|---|---|
+| 机制 | 新增 `ArticleListItems`:`of(articles)` 批量(作者与标签各一次查询) · `fill(article, vo)` 单篇;详情与列表两条路径都穿过它 |
+| 修掉 | 推荐器漏掉 `coverThumb`(前端 `coverThumb \|\| cover` 掩盖了它)· 推荐器在候选循环里逐篇查作者(N+1,上限 100) |
+| 测试 | 133 → 140;两条专门钉住「查询次数与条数无关」与「每条都带 coverThumb」 |
+| 真实核对 | 推荐接口现在返回 `coverThumb`;所用临时标签关联已逐字还原 |
+
+## v5 候选(来自 2026-09-13 架构评审,8 个候选里已完成 7 个)
 
 完整论证与前后对照图见 `docs/architecture-review-2026-09-13.html`(HTML,含 Mermaid 图)。
 以下是一行摘要,防止那份快照丢失时工作项也一起丢:
@@ -128,4 +139,4 @@
 | 05 | ~~让 session 只有一个归属~~ | Strong | **已完成**,见 `architecture.md` §14。「带 token + 401 登出跳转」曾有 3 份实现 + 4 处 view 复制,7 处可重定向;`loginRequired()` 是死代码 |
 | 06 | ~~把上游解帧搬出传输层~~ | Strong | **已完成**,见 `architecture.md` §13。唯一解帧的代码曾只能靠真实网络触达 → D8(错误帧被静默丢弃)与 D9(零参数工具调用可能被丢掉)长在无测试面的地方 |
 | 07 | ~~SSE seam 升到「对话行为」这一层~~ | Strong | **已完成**,见 `architecture.md` §15。线格式知识曾被实现四次,且 `done` 事件客户端没处理 |
-| 08 | 给文章→列表项的投影一个家 | Worth exploring | `ArticleListItemVO` 组装两次,第二份漏了 `coverThumb` 且有 N+1;前端用 `coverThumb \|\| cover` 把缺失掩盖了 |
+| 08 | ~~给文章→列表项的投影一个家~~ | Worth exploring | **已完成**,见 `architecture.md` §16。投影曾被写两次,第二份漏了 `coverThumb` 且有 N+1;前端用 `coverThumb \|\| cover` 把缺失掩盖了 |
