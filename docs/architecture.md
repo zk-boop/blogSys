@@ -1,0 +1,337 @@
+# blogSys 架构现状说明
+
+> 生成于 2026-09-13，基线 `master` @ `1721796` + 一处未提交改动（`frontend/src/views/AiChat.vue`）。
+> 用途：复习底图，以及后续开发的坐标系。凡标 `file:line` 的都是实读代码确认过的位置，不是印象。
+> 标 **【已实测】** 的条目是在本次会话中通过运行中的服务复现过的，不是推断。
+>
+> 配套文档：架构评审报告（deepening 候选与前后对照图）在系统临时目录，
+> `architecture-review-20260913-075816.html`。
+
+本文使用一套固定词汇，后文不再解释：
+
+| 词 | 含义 |
+|---|---|
+| **module** | 任何有 interface 和 implementation 的东西：函数、类、包、跨层切片 |
+| **interface** | 调用者为了用对它必须知道的一切：签名、不变量、调用顺序、错误模式、配置、性能特征 |
+| **depth** | interface 上的杠杆率：调用者或测试每学一单位 interface，能撬动多少行为 |
+| **deep / shallow** | 行为多而 interface 小 = deep；interface 和实现一样复杂 = shallow |
+| **seam** | module 的 interface 所在的位置（Feathers） |
+| **adapter** | 坐在 seam 上满足 interface 的具体实现 |
+| **locality** | 维护者收益：改动、缺陷、知识、验证都收敛在一处 |
+
+---
+
+## 1. 一分钟速览
+
+| 项 | 值 |
+|---|---|
+| 后端 | Spring Boot 3.4.1 / Java 17 / MyBatis-Plus 3.5.7 / Spring Security + JWT / MySQL 8 |
+| 前端 | Vue 3.5（`<script setup>`）+ Vite 8 + Element Plus + Pinia + Axios + markdown-it |
+| 规模 | 后端主代码 3,859 行 / 测试 768 行；前端 `src` 4,266 行 |
+| 提交 | 40 次，2026-08-02 → 2026-08-09 |
+| 测试 | 28 个后端单测（全 Mockito，**实跑全绿**），**无**前端测试，**无** CI |
+| 文档 | `docs/api.md`（接口）、`docs/backlog.md`（v2/v3 状态与候选）、`docs/lessons.md`（踩坑记录）、`docs/schema.sql` |
+
+**本地启动**（2026-09-13 已实测通过）：
+
+```bash
+# 依赖：本地 MySQL80 服务已在 3306 运行，库 blog_sys 已存在
+cd backend  && mvn spring-boot:run      # → :8080，profile=local
+cd frontend && npm run dev              # → :5173，代理 /api 与 /uploads 到 8080
+```
+
+`application.yml:13` 的密码占位为空，真实密码在 `application-local.yml`（已被 `.gitignore:25` 忽略，未跟踪，**没有**入库）。
+启动后端时需保证 `AI_API_KEY`（或 `AI_LLM_API_KEY`）在进程环境里，否则 AI 助手会返回「AI 服务未配置」（`ChatService.java:36-39`）。
+
+**运行时拓扑**：
+
+```
+浏览器 ──:5173──> Vite dev server ──proxy /api, /uploads──> Spring Boot :8080 ──JDBC──> MySQL :3306
+                       │                                            │
+                       └── 静态资源与 SPA 兜底                        └── 上传文件落盘 backend/uploads/
+```
+
+---
+
+## 2. 后端模块地图
+
+| 包 / module | interface | 现状 |
+|---|---|---|
+| `controller/**` | REST 端点，参数校验，调 service | 薄，符合预期；但**有一处规则藏在 controller 里**（§4.1） |
+| `service/ArticleService` | 15 个 public 方法 | **429 行，全库最大、改动最多（10 次提交）**；混合了分页查询、可见性判定、标签同步、VO 装配、封禁过滤、封面缩略图推导 —— 且**零测试** |
+| `service/CommentService` | 评论树、创建、删除 | 238 行；可见性逻辑与 `ArticleService` 有逐字重复 |
+| `service/RecommendService` | `recommend(articleId)` | 178 行纯算法打分，输入输出干净，**是当前最 deep 的 module**；但列表项装配是 `ArticleService` 的复制品（§8） |
+| `service/{Auth,User,Like,Tag,Admin}Service` | 各自领域 | 小且清晰；`AuthService` + 其测试是全库质量最高的一对 |
+| `security/{JwtUtil,JwtAuthFilter,SecurityUtil,LoginUser}` | 认证与身份判定 | `SecurityUtil` 是 final + 私有构造 + 全静态，**任何 adapter 都满足不了它** —— 这是 §4.2 的根因 |
+| `mapper/**` | MyBatis-Plus `BaseMapper` | 7 个空接口，无自定义 SQL |
+| `common/GlobalExceptionHandler` | 异常 → HTTP 状态 + `Result` 包装 | 见 §7.1，兜底分支有实际缺陷 |
+| `ai/**` | 见 §5 | 结构最好的子系统，但**「只读」承诺已被代码违反** |
+
+**`mapper` 层是虚假的 seam**：7 个 mapper 接口全部只有 9 行、无自定义方法，SQL 由 MyBatis-Plus 的 `Wrappers` 在 service 里现场拼装。查询逻辑并不在 mapper 层，而是在 service 层内联 —— 这是后文多条发现的共同根因。
+
+---
+
+## 3. 前端模块地图
+
+| module | 现状 |
+|---|---|
+| `api/http.js`（46 行） | Axios 实例 + 拦截器。**但它同时知道 UI 和路由**：401 时调 store、`router.push('/login')`、`ElMessage.error`（`http.js:19-44`） |
+| `api/index.js`（63 行） | 纯端点映射，7 次提交的热点，无逻辑 —— 健康 |
+| `api/ai.js`（97 行） | 手写 SSE 解析，独立于 Axios；但它重实现了 token 注入与 401 处理（`:7-20`），还把走 `http` 的 `recommendApi` 装了进来（`:95-97`） |
+| `router/index.js`（60 行） | 路由表 + 守卫 + **一个模块级单槽 `loadErrorHandler`**（`:47-58`），由 `App.vue:49-60` 反向注册 |
+| `stores/user.js`（39 行） | token/user/isLoggedIn/isAdmin；**`fetchMe()`（`:24`）全库无调用者**，`isAdmin` 永远来自 localStorage 快照 |
+| `views/**`（15 个） | 每个 view 自带 `loading` / `page` / `total` / 错误提示的全套编排；**15 个 view 里只有 1 个 `catch`，零个错误态** |
+| `components/**`（5 个） | `ArticleCard`、`CommentItem`、`ImageCropUpload`、`Lightbox` |
+| `utils/*` | `format.js` 10 行、`theme.js` 15 行、`avatar.js` 28 行、`markdown.js` 55 行 |
+
+**分页列表编排在 6 个 view 里各写一遍**（`page` 出现次数）：`admin/Users` 10、`admin/Articles` 10、`admin/Comments` 10、`Home` 9、`Profile` 7、`UserProfile` 5。
+
+**路由级模块加载失败兜底横跨三处**：`router/index.js:47-58`（单槽 handler）+ `App.vue:49-60`（注册 + 1.2 秒后自动重试）+ `App.vue:120-127`（错误 UI）。重试手法是 `router.replace({path:'/', query:{t:Date.now()}})` 后立刻 `replace` 回当前路径（`App.vue:41-45`）—— 这是为绕开 Vite 运行中重新预构建的 workaround，见 `docs/lessons.md`。`App.vue` 共 10 次提交，其中 4 次是这套机制。
+
+---
+
+## 4. 核心发现：三条贯穿性规则，目前都没有家
+
+**平台有三条业务规则，被以 3–4 种不同机制、散落在 7–9 个地方重复表达，而每条规则本身没有对应的 module。**
+这不是整洁度问题 —— 重复已经产生了可观察的错误行为。
+
+### 4.1 内容可见性（封禁作者的内容对非管理员不可见）
+
+同一条规则，五种表达方式：
+
+| 表达方式 | 位置 |
+|---|---|
+| 内联原始 SQL 子查询 | `ArticleService.java:57` `ACTIVE_USERS_SQL = "SELECT id FROM users WHERE status = 0"`，用于 `:63`（首页+搜索）、`:97`（热门） |
+| 单实体布尔判定 | `ArticleService.java:193` `isAuthorBanned`，用于 `:127`（详情），且写成 `&& !SecurityUtil.isAdmin()` |
+| 批量 id 集合过滤 | `ArticleService.java:182-191` `bannedUserIdsOf`，用于 `:173-177`（收藏） |
+| **逐字复制的第二份** | `RecommendService.java:115-121`，与上一条函数体相同 |
+| **逐字复制的第三份** | `CommentService.java:58-70` `filterBanned`，评论版 |
+| 登录闸门 / 登录拒绝 / 主页拒绝 / 封禁保护 | `JwtAuthFilter.java:39` · `AuthService.java:47` · `UserService.java:47` · `AdminService.java:79` |
+| **为副作用取数** | `UserController.java:65` `userService.publicProfile(id);` —— 返回值被丢弃，这一行就是「主页过滤」的全部实现 |
+
+**来历**：`git show --stat c9fa9f5`（提交「封禁用户内容下线」）只动 4 个文件、+42/-2 就覆盖了 7 个面；而 `RecommendService` 的那一份是在**下一个提交** `0c0a940` 里靠复制粘贴进来的。
+
+**已经背离出的四个错误行为**：
+
+| # | 行为 | 位置 |
+|---|---|---|
+| D3 | **RSS 完全没有这条规则** —— 被封禁作者的文章仍在公开订阅源里。这里还写了字面量 `1` 而不是 `ArticleStatus.PUBLISHED` | `RssController.java:28-32` |
+| D4 | **管理员豁免只在一处实现** —— 管理员能打开被封禁作者的文章，却看不到它的评论 | `ArticleService.java:127` vs `:63`、`:173-178`、`CommentService.java:55` |
+| D5 | **标签计数虚高** —— `selectList(null)` 把草稿和封禁作者的文章都算进去，标签云于是展示永远不会出现在列表里的文章数；删除确认弹窗还把这个数字念给管理员听 | `TagService.java:29` · `Home.vue:148` · `admin/Tags.vue:40` |
+| D6 | **先分页后过滤** —— 收藏列表先 `subList(from, to)` 再过滤封禁作者，而 `total` 用的是过滤前的 `favorites.size()`；页内条数会少于 `size` 而 total 虚高。它也是全库唯一绕过 `selectPage` 的列表 | `ArticleService.java:168-178` |
+
+**另一半规则也重复**：`canViewDraft` 在 `ArticleService.java:209-216` 与 `CommentService.java:72-79` **函数体完全相同**（含同样的 `catch (BizException e) { return false; }`）。
+
+**「已发布才可见」重复 5 次**：`article.getStatus() != ArticleStatus.PUBLISHED.getValue()` 出现在 `ArticleService.java:146`、`CommentService.java:45`、`CommentService.java:117`、`LikeService.java:26`、`RecommendService.java:51`，每次独立判断、各自抛 404。
+
+**D12（疑似缺陷）**：`escapeLike`（`ArticleService.java:295-297`）只被 `page`（`:75`）调用；`adminPage`（`:109-111`）用的是未转义 `keyword`。同一个搜索框，两个接口对 `%` `_` 的行为不一致。
+
+**做删减测试**：把上述 9 处封禁判定、5 处发布判定、2 份 `canViewDraft`、3 份批量过滤删掉，复杂度**收敛**而不是转移 —— 这正是值得深化的信号。
+
+### 4.2 状态码是魔法数字，且两个语义相反的状态共用了数值 1
+
+- 文章状态有枚举：`common/ArticleStatus.java`（`DRAFT(0)`、`PUBLISHED(1)`）。**但 `RssController` 连它都没用**，写的是字面量 `1`。
+- **用户状态没有任何枚举** —— 「已封禁」全库写作 `Integer.valueOf(1).equals(user.getStatus())`，出现在 7 个文件（`JwtAuthFilter:39`、`ArticleService:188,195`、`CommentService:64`、`RecommendService:118`、`AuthService:47`、`UserService:47`、`AdminService:79`），而在 SQL 里同一事实写作 `status = 0`（表示正常）。
+- 于是 `PUBLISHED = 1` 与「已封禁 = 1」数值相同、语义相反。这是一个真实存在的阅读陷阱。
+
+### 4.3 viewer 是环境状态，不是被接受的依赖
+
+`SecurityUtil.currentUserId()`（`:12-18`）在匿名时**抛 401**，而调用方想要的恰恰是「可选 viewer」，于是把它当控制流用：
+
+- `ArticleService.java:198-207`（favorited）、`:209-216`（draft）、`CommentService.java:72-79` 都是 `try { … } catch (BizException e) { return false; }`。
+- 同一个问题在同一个文件里隔二十行有第二种写法：`:400-408` 直接判 `auth == null`。
+- 测试只能靠改线程局部变量伪造登录：`CommentServiceTest.java:43-44`、`LikeServiceTest.java:40-41`，**且都不清理**。
+- 后果：三处 try/catch 的匿名分支与 `AdminService` 的守卫，**全部零覆盖**。「未登录访客看到 liked=false、favorited=false、草稿 404」这条行为没有任何断言。
+
+---
+
+## 5. AI 助手内核现状（`com.blogsys.ai`）
+
+结构上是全库最好的子系统，也是唯一一个真 seam 有多个 adapter 的地方。但它的对外承诺已经被代码违反。
+
+**数据流**：
+
+```
+POST /api/ai/chat (SSE)
+  └─ ChatController          起 AsyncContext(setTimeout 0)，转 ChatRequest → List<ChatMessage>，丢给 chatExecutor
+      └─ ChatService.chat    注入 system prompt，裁剪历史到 20 条（:42-43）
+          └─ runToolLoop     最多 4 轮（:21）
+              ├─ OpenAiClient.chatStream(msgs, tools, listener)   ← 真流式 HTTP
+              │    ├─ onContent   → 立刻转发 SSE message 帧
+              │    └─ onToolCalls → 收集工具调用
+              ├─ 有工具调用 → executeTool → 结果作为 tool 消息喂回，下一轮
+              └─ 无工具调用 → 结束
+```
+
+### 5.1 「全部只读」已被违反 【已实测】
+
+`docs/api.md:86` 声明工具「全部为只读操作」。实际上：
+
+- **D2 · 写入副作用**：`ArticleDetailTool.java:45` → `ArticleService.detail(id)` → `ArticleService.java:130` `articleMapper.incrViewCount(id)`。
+  而浏览量正是 `getHotArticles` 的排序依据（`ArticleService.java:93-102`）—— **AI 会把自己问出来的文章加热**。
+  实测：以普通用户请求「查看 id=17 的文章详情」，AI 调用 `getArticleDetail`，文章 17 的 `view_count` 由 **6 变成 7**，全程没有人类打开过页面。
+
+- **D1 · 越权读取**：AI 会话跑在 `chatExecutor` 的线程池上（`ChatController.java:47-49`），
+  `JwtAuthFilter` 只把 principal 放进了 servlet 线程的 `SecurityContextHolder`（`JwtAuthFilter.java:46`），
+  全库没有 `DelegatingSecurityContextExecutor`／`WebAsyncManager` callable／策略覆写 —— **上下文不传播**。
+  于是 `SiteStatsTool.java:35` 直接调用 `adminService.stats()`，而 HTTP 层 `GET /api/admin/stats` 是 ADMIN-only（`SecurityConfig.java:50`、`AdminController.java:36-38`）。
+  实测：注册一个全新 USER 账号，直接打 `/api/admin/stats` 得到 **403**；同一个账号通过 AI 提问「全站一共有多少篇文章、多少位用户、多少条评论」，
+  AI 调用 `getSiteStats` 并回答了全站统计（含「今日新增 1 位用户」—— 正是刚注册的探针账号）。
+
+  → **鉴权只存在于 HTTP seam 上，不在 module 里。工具路径绕过了它。**
+
+### 5.2 身份缺失造成的静默错误答案
+
+因为池线程上没有 principal，`SecurityUtil.currentUserId()` 会抛 401，而域层用 `catch → false` 把它吸收掉：
+
+- `ArticleService.java:204-206`（favorited）、`:213-215`（draft）→ **模型被告知「用户未收藏」**；
+- `ArticleService.java:402-404`（liked，写法不同，直接判 `auth == null`）→ **模型被告知「用户未点赞」**。
+
+这是**错误答案而不是错误** —— 这就是为什么它从不报错、也从不被发现。
+
+### 5.3 seam 与 adapter 的诚实清点
+
+- **`SseWriter` 是真 seam**：生产 adapter `SseWriterHttp` + 测试 adapter `ChatServiceTest.CapturingWriter`。
+  但它真，是因为测试需要它，不是因为有什么东西在 seam 两侧变化。
+- **`ChatStreamListener` 是假 seam**：只有一个匿名内部类的实现。
+- **`AgentTool` 有 6 个实现，但契约没有信封**：参数强转被复制三次（`ArticleDetailTool.java:55-58` ≡ `RecommendArticlesTool.java:50-53`，`UserProfileTool.java:42-48` 内联同一逻辑）；
+  schema 里没有 `required`（`ToolRegistry.java:37-42`），模型漏传 id 时 Java 异常消息会原样送给 LLM；
+  错误是字符串拼接的 JSON（`ChatService.java:98`、`:108`）—— 驱动消息里一个引号就能造出坏 JSON；
+  截断出现两次且都可能切在 JSON 字符串中间（`ChatService.java:110-112` 截 4000、`ArticleDetailTool.java:50-51` 截 2000）。
+  `AbstractTool`（`:11`）没有任何抽象成员，只是命名空间，其 `json()`（`:13-19`）把序列化失败吞成**假成功**。
+  `ToolRegistry` 用 `Collectors.toMap` 建表 —— 工具重名会在启动时直接崩。
+
+### 5.4 解帧逻辑没有测试面 【已实测的代码事实】
+
+唯一把上游帧变成事件的代码是 `OpenAiClient` 的私有内部类 `StreamAggregator`（`:80`），唯一入口 `accept(JsonNode)` 由 socket 喂（`:67`）。
+测试整个 mock 掉 `OpenAiClient`（`ChatServiceTest.java:32`），用手工回调驱动（`:51-56`）—— **整个测试套件里一帧都没被解析过**。于是：
+
+- **D8**：`OpenAiClient.java:97-100` 对 `choices` 缺失的帧直接 return，**包括 OpenAI 形状的 `{"error":…}`**（限流、内容过滤）。流随后读到 EOF，`finished` 保持 false，用户收到一个 `done` 和一片空白，没有任何错误事件。
+- **D9**：`OpenAiClient.java:116-119,128` —— 「是否有工具调用」是从**参数分片**推断的（`if (finished && !callArgs.isEmpty())`）。参数为空或不带 arguments 的 delta 会被重分类为「没有工具调用」，助手消息里也不含这个调用，**模型永远不知道它被跳过了**。而零参数工具恰好是 `getSiteStats` 与 `getHotArticles`（`SiteStatsTool.java:29-31`、`HotArticlesTool.java:31-33` 返回空 property map）。
+- 每轮新建 `HttpClient`（`:171-175`）—— 一次对话最多 4 个，无 keep-alive。
+- 任何非 JSON 的 `data:` 行都抛 `BizException(502)`（`:164-168`）。
+
+### 5.5 取消与生命周期不在内核里
+
+- `AiExecutorConfig.java:16-20` core 2 / max 4 / queue 20 —— ThreadPoolExecutor 只在队列满后才扩容，所以**稳态并发是 2**，另外 20 个静默排队；每场对话可占该槽位 4 轮 × 120 秒。
+- 拒绝时 `execute` 抛异常，lambda 从不执行、`complete()` 从不执行，而 `setTimeout(0L)` 让请求也没有期限 ⇒ **客户端收不到任何 SSE 错误**。
+- 断连只有一种偶然信号：写 content 事件抛异常被转成 `StreamAbortedException`（`ChatService.java:66-70`）；写 tool 事件失败（`:102`、`:113`）会走成一条完整的 `log.error("AI chat failed")` 堆栈 —— 一次正常用户操作被记成服务故障。
+- 轮与轮之间没有存活检查，**浏览器「停止」不会传到服务端**。没有心跳帧，响应头要到第一个 token 才 flush。
+
+### 5.6 一件确实干净的事
+
+`ChatService` 全字段 final、`messages` 是方法局部变量；`OpenAiClient` 无状态；`StreamAggregator` 每次调用新建；6 个工具都是无状态单例。
+**并发对话之间不会互相污染** —— 这一块不用动。
+
+### 5.7 历史窗口：三个地方互相矛盾
+
+- `ChatController.java:58` `@Size(max=50)` → 超了返回 400；
+- `ChatService.java:42-43` `MAX_HISTORY=20` → 静默丢最老的消息；
+- `api/ai.js:43-46` 在 400 时**丢弃响应体**，只显示「AI 服务错误，请稍后重试」。
+
+于是聊到 25 轮左右，用户会撞上一堵说不出原因的墙（**D10**）。
+
+### 5.8 文档缺口
+
+AI 子系统在 `docs/api.md` 只有 6 行；而 `docs/lessons.md` 全文 63 行、按类别整理，**一条 AI 相关的坑都没有** —— 这个子系统踩过的坑没有任何地方沉淀。
+
+---
+
+## 6. 测试与验证现状（缺口地图）
+
+`mvn test` 于 2026-09-13 实跑：**28 个测试全绿**（ChatServiceTest 6、AuthServiceTest 5、CommentServiceTest 7、LikeServiceTest 3、RecommendServiceTest 7）。
+
+但缺口比数字看起来大：
+
+| 区域 | 状态 |
+|---|---|
+| `ArticleService`（429 行，**10 次提交，全库最热**） | **零测试** |
+| `CommentService` | 有（7 个），但覆盖创建/删除，不含 `filterBanned` |
+| `RecommendService` | 有（7 个），纯算法覆盖良好；**但看不到 N+1**（`userService` 是 mock） |
+| `ai/ChatService` | 有（6 个），覆盖工具循环/异常/轮数上限 |
+| `ai/OpenAiClient` 帧解析 · `buildPayload` · `SseWriterHttp` 组帧 · `ToolRegistry` · **全部 6 个工具** · `api/ai.js` 解析器 | **零测试** |
+| 全部 controller / 安全 / 封禁可见性 / `AdminService` | **零测试** |
+| 前端 | **完全无测试基础设施**（无 vitest/jest，`package.json` 只有 dev/build/preview） |
+| CI | 无（无 `.github/`） |
+
+「改动最频繁的 module 测试最少」是这份地图里最刺眼的一行 —— 它同时也是 §4 里三条规则的主要宿主。两者是同一个问题的两面。
+
+---
+
+## 7. 改动前的现实约束
+
+### 7.1 已确认缺陷速查
+
+完整表格（含严重度）见评审报告 A 节。这里只列位置：
+
+| # | 缺陷 | 位置 |
+|---|---|---|
+| D1 | AI 工具路径可读 ADMIN 专属统计（**已实测**） | `SiteStatsTool.java:35` · `SecurityConfig.java:50` |
+| D2 | AI「只读」路径产生写入，且反噬热门排序（**已实测**） | `ArticleDetailTool.java:45` → `ArticleService.java:130` · `:93-102` |
+| D3 | 封禁作者文章仍在公开 RSS 里 | `RssController.java:28-32` |
+| D4 | 管理员看得到文章、看不到评论 | `ArticleService.java:127` vs `:63`、`CommentService.java:55` |
+| D5 | 标签计数包含草稿与封禁作者 | `TagService.java:29` |
+| D6 | 收藏列表先分页后过滤 | `ArticleService.java:168-178` |
+| D7 | 点相关推荐 → URL 变了正文不变；Write 编辑模式发两次请求 | `App.vue:128-132` · `ArticleDetail.vue:146-151,232-244` · `Write.vue:125,178` |
+| D8 | 上游错误帧被静默丢弃 → 空回答无提示 | `OpenAiClient.java:97-100,140-142` |
+| D9 | 零参数工具调用可能被整个丢掉 | `OpenAiClient.java:116-119,128` |
+| D10 | 25 轮左右撞上无解释的墙 | `ChatController.java:58` · `ChatService.java:42-43` · `api/ai.js:43-46` |
+| D11 | 缺失静态资源返回 500 而非 404（**已实测**） | `GlobalExceptionHandler.java:49-53` |
+| D12 | 同一搜索框，前后台对 `%` `_` 行为不一致 | `ArticleService.java:75` vs `:109-111` |
+
+### 7.2 会咬人的地方（来自 `docs/lessons.md`，均为真实踩过的坑）
+
+- 路由级 view **必须单根节点**，否则 `<Transition>` 离开动画抛错 → 触发路由错误 → 返回详情页必现「页面加载失败」。
+- `router.onError` 会收到**导航取消**，必须用 `error.type !== undefined` 区分，否则正常返回也报错。
+- Vite 运行中发现新依赖会重新预构建并让旧模块引用失效 → 白屏。因此 `vite.config.js` 里 `optimizeDeps.include` 必须全量列出依赖，**新增依赖时要同步加进去**。
+- `cropperjs` v2 是 Web Component（`$` 前缀方法），v1 的记忆全部失效。
+- `Integer == Integer` 只对 ±128 缓存池成立，状态判断一律 `Objects.equals`。
+- 清除数据库后管理员不会被重新种子化（`DataInitializer` 只在启动时执行）：清库后需重启应用。
+- Windows 下运行中的进程会锁住 jar，打包前先停进程。
+- **AI 子系统未沉淀任何坑**（见 §5.8）—— 第一次改它的人没有前人经验可继承。
+
+### 7.3 环境事实
+
+- 本地 MySQL 占用 3306，所以 `docker-compose.yml` 把容器端口映射到 3307。
+- `docker-compose.yml` 走容器内 MySQL（`mysql:3306`），与本地开发不是同一套数据。
+- AI 环境变量：`AI_BASE_URL`（阿里云百炼 MaaS 兼容端点）、`AI_MODEL`（`qwen3.7-plus`）、API Key 需自行注入进程环境。
+- **`stores/user.js:24` 的 `fetchMe()` 全库无调用者**，`isAdmin`（`:11`）直接读 localStorage 快照（`:7`）。
+  管理员改动某人角色或封禁某人后，对方客户端在重新登录前仍按旧角色渲染。
+  注意这**不是越权**：服务端 `JwtAuthFilter.java:39` 会直接拦截封禁用户，影响仅限于 UI 陈旧。
+
+---
+
+## 8. 热点文件（40 次提交的改动频次）
+
+| 文件 | 提交数 |
+|---|---|
+| `frontend/src/views/ArticleDetail.vue`（458 行） | 11 |
+| `backend/.../service/ArticleService.java`（429 行） | 10 |
+| `frontend/src/App.vue`（141 行） | 10 |
+| `frontend/src/components/ArticleCard.vue`（142 行） | 10 |
+| `frontend/src/components/ImageCropUpload.vue`（193 行） | 9 |
+| `backend/.../service/CommentService.java`（238 行） | 8 |
+| `frontend/src/views/Write.vue`（334 行） | 8 |
+| `frontend/src/views/Profile.vue`（168 行） | 8 |
+| `frontend/src/style.css`（417 行） | 8 |
+| `frontend/src/api/index.js`、`router/index.js` | 7 |
+| `backend/.../config/SecurityConfig.java`（81 行） | 7 |
+
+热点与 §4 的分布高度重合：改得最多的地方，正是那条没有家的规则所在的地方。
+
+---
+
+## 9. 下一步的候选方向
+
+按杠杆排序，详细论证与前后对照图见评审报告：
+
+1. **把内容可见性收敛成一个 module** —— 一条规则、一个 interface、八条读路径。同时消掉 D3–D6、重复、SQL 泄漏与魔法数字，并让 `ArticleService` 的 429 行瘦身。
+2. **让「谁在问、只读」穿过异步 seam** —— 严重度最高（D1 越权 + D2 违反只读承诺）。排在 01 之后，是因为 01 建立的可见性 module 正是 02 需要工具去穿过的那个 seam。
+3. **给 router outlet 加 route identity** —— 一处改动修掉 D7。
+4. **前端分页列表编排收敛** —— 6 个 view 各写一遍，且「请求失败」当前不可表达。
+5. **session 一个归属** —— 7 处可重定向收敛为 1。
+6. **上游解帧搬出传输层** —— 解开 D8/D9，AI 内核第一次可以离线测。
+7. **文章→列表项投影一个家** —— `RecommendService` 漏了 `coverThumb` 且有 N+1。
+8. **SSE seam 升到行为层** —— 同一份线格式知识目前被实现四次。
+
+一次性收尾项：**D11**（404）与 **D12**（LIKE 转义）各自一次提交即可。
