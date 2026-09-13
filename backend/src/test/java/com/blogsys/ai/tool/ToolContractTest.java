@@ -123,24 +123,40 @@ class ToolContractTest {
     // ---------- 序列化失败 ----------
 
     @Test
-    @DisplayName("序列化失败要留下痕迹 —— 那个 catch 此前是个黑洞")
-    void json_shouldLogAndReturnAnEnvelope_whenSerializationFails() {
+    @DisplayName("序列化失败要抛出,而不是返回一个与正常结果长得一样的错误信封")
+    void json_shouldThrow_whenSerializationFails() {
+        BizException e = assertThrows(BizException.class, () -> AbstractTool.json(mapper, cyclic()));
+
+        assertTrue(e.getMessage().contains("序列化失败"), "实际: " + e.getMessage());
+    }
+
+    @Test
+    @DisplayName("抛出之前仍然留下一行痕迹 —— 出错的类型要能查到")
+    void json_shouldLogTheFailingType() {
+        // 日志的归属是 ResultBudget(预算与失败都在那儿),所以 appender 挂在它身上
         ch.qos.logback.classic.Logger logger =
-                (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(AbstractTool.class);
+                (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(ResultBudget.class);
         ch.qos.logback.core.read.ListAppender<ch.qos.logback.classic.spi.ILoggingEvent> appender =
                 new ch.qos.logback.core.read.ListAppender<>();
         appender.start();
         logger.addAppender(appender);
         try {
-            String result = AbstractTool.json(mapper, cyclic());
+            assertThrows(BizException.class, () -> AbstractTool.json(mapper, cyclic()));
 
-            assertTrue(result.contains("结果序列化失败"), "仍然要给出一段 JSON,实际: " + result);
             assertTrue(appender.list.stream()
                             .anyMatch(event -> event.getLevel() == ch.qos.logback.classic.Level.WARN),
                     "失败必须留下痕迹 —— 否则它与一个正常的工具结果长得一模一样");
         } finally {
             logger.detachAppender(appender);
         }
+    }
+
+    @Test
+    @DisplayName("对照:正常结果照常返回一段 JSON")
+    void json_shouldReturnJson_forNormalValues() throws Exception {
+        String result = AbstractTool.json(mapper, java.util.Map.of("count", 3));
+
+        assertEquals(3, mapper.readTree(result).path("count").asInt());
     }
 
     /** 一个 JSON 序列化不了的对象(自引用 ⇒ 无限递归)。 */

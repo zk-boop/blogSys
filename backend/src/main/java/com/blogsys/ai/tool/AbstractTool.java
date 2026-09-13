@@ -2,35 +2,27 @@ package com.blogsys.ai.tool;
 
 import com.blogsys.common.BizException;
 import com.blogsys.vo.ArticleListItemVO;
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 
 import java.util.Map;
 
-import lombok.extern.slf4j.Slf4j;
-
-@Slf4j
 public abstract class AbstractTool implements AgentTool {
 
     /**
-     * 序列化工具结果。
+     * 序列化工具结果。这是所有工具结果的**唯一出口**,所以两件事都归它:
      *
-     * <p>失败时返回一个错误信封,而不是抛出 —— 工具契约是「返回一段给模型看的 JSON 文本」,
-     * 所以这里必须给出点什么。
+     * <p><b>大小。</b>超过 {@link ResultBudget#LIMIT} 就按结构裁 —— 整条丢弃数组尾部,
+     * 重新序列化,永远不切开任何一个 JSON token(见 {@link ResultBudget} 的类注释)。
      *
-     * <p>但**至少留下痕迹**:这段 catch 此前是个黑洞 —— 它返回的
-     * {@code {"error":"结果序列化失败"}} 与一个正常的工具结果长得一样,调用者(以及读日志的人)
-     * 无法察觉「这个工具其实没跑完」。失败被降级成一个正常的返回值,而没有任何记录。
+     * <p><b>失败。</b>抛出,不再返回 {@code {"error":"结果序列化失败"}} 那种假成功:
+     * 那个信封与一个正常的工具结果长得一模一样,调用者分不出「工具坏了」和「工具跑完了」。
+     * 抛出去之后走 {@code ChatService.executeTool} 的统一失败路径:记一条 WARN,
+     * 并给模型一个错误信封 —— 模型照样知道发生了什么,但日志里不再是一片安静。
      */
     protected static String json(ObjectMapper objectMapper, Object value) {
-        try {
-            return objectMapper.writeValueAsString(value);
-        } catch (JsonProcessingException e) {
-            log.warn("工具结果序列化失败: {}", value == null ? "null" : value.getClass().getName(), e);
-            return "{\"error\":\"结果序列化失败\"}";
-        }
+        return ResultBudget.encode(objectMapper, value);
     }
 
     protected static String arg(Map<String, Object> args, String key, String fallback) {
