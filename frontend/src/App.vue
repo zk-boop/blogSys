@@ -46,12 +46,15 @@ function retryNavigation() {
   router.replace(router.currentRoute.value.fullPath)
 }
 
+/** 退订「路由级加载失败」。订阅表可能不止一个订阅者,退订是订阅者自己的责任。 */
+let unsubscribeLoadError = null
+
 onMounted(() => {
   window.addEventListener('scroll', onScroll, { passive: true })
   // 用服务端的事实刷新会话快照。localStorage 里那份是「登录那一刻」的,之后管理员
   // 改了角色或封禁了人,客户端在重新登录前会一直按旧角色渲染 —— 这条路径此前从未被调用。
   store.fetchMe()
-  onModuleLoadError(() => {
+  unsubscribeLoadError = onModuleLoadError(() => {
     moduleError.value = true
     setTimeout(() => {
       if (!moduleError.value) return
@@ -65,7 +68,10 @@ onMounted(() => {
   })
 })
 
-onBeforeUnmount(() => window.removeEventListener('scroll', onScroll))
+onBeforeUnmount(() => {
+  window.removeEventListener('scroll', onScroll)
+  unsubscribeLoadError?.()
+})
 </script>
 
 <template>

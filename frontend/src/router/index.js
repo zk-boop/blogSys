@@ -1,6 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { useUserStore } from '../stores/user'
 import { session } from '../session-instance'
+import { createRouteErrorChannel } from './loadError'
 
 const routes = [
   { path: '/', name: 'home', component: () => import('../views/Home.vue') },
@@ -46,17 +47,16 @@ router.beforeEach((to) => {
   }
 })
 
-let loadErrorHandler = null
+const routeErrors = createRouteErrorChannel()
 
-router.onError((error) => {
-  if (error && error.type !== undefined) {
-    return
-  }
-  loadErrorHandler?.(error)
-})
+router.onError((error) => routeErrors.notify(error))
 
+/**
+ * 订阅「这一次导航没能把页面拿出来」。**返回退订函数** —— 订阅者可能不止一个,
+ * 而退订是它自己的责任。此前这里是一个单槽变量,第二个订阅者会静默顶掉第一个。
+ */
 export function onModuleLoadError(handler) {
-  loadErrorHandler = handler
+  return routeErrors.subscribe(handler)
 }
 
 export default router
