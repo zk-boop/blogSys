@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.blogsys.common.ArticleStatus;
 import com.blogsys.common.BizException;
+import com.blogsys.common.LikePattern;
 import com.blogsys.common.PageResult;
 import com.blogsys.dto.CommentRequest;
 import com.blogsys.entity.Article;
@@ -51,7 +52,7 @@ public class CommentService {
     public PageResult<AdminCommentVO> adminPage(long page, long size, String keyword) {
         Page<Comment> result = commentMapper.selectPage(new Page<>(page, size),
                 Wrappers.<Comment>lambdaQuery()
-                        .like(StringUtils.hasText(keyword), Comment::getContent, keyword)
+                        .like(StringUtils.hasText(keyword), Comment::getContent, LikePattern.of(keyword))
                         .orderByDesc(Comment::getCreatedAt));
         List<AdminCommentVO> records = toAdminVOs(result.getRecords());
         return new PageResult<>(result.getTotal(), result.getCurrent(), result.getSize(), records);

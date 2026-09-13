@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.blogsys.common.ArticleStatus;
 import com.blogsys.common.BizException;
+import com.blogsys.common.LikePattern;
 import com.blogsys.common.PageResult;
 import com.blogsys.dto.ArticleRequest;
 import com.blogsys.entity.Article;
@@ -68,7 +69,7 @@ public class ArticleService {
             query = query.where(w -> w.in(Article::getId, articleIds));
         }
         if (StringUtils.hasText(keyword)) {
-            String kw = escapeLike(keyword);
+            String kw = LikePattern.of(keyword);
             // 外层 where 已经把这一组整体括起,所以这里的 or() 只在本组内生效
             query = query.where(w -> w.like(Article::getTitle, kw).or().like(Article::getContent, kw));
         }
@@ -111,8 +112,8 @@ public class ArticleService {
                         .eq(status != null, Article::getStatus, status)
                         .eq(userId != null, Article::getUserId, userId)
                         .and(StringUtils.hasText(keyword), w -> w
-                                .like(Article::getTitle, keyword)
-                                .or().like(Article::getContent, keyword))
+                                .like(Article::getTitle, LikePattern.of(keyword))
+                                .or().like(Article::getContent, LikePattern.of(keyword)))
                         .orderByDesc(Article::getCreatedAt));
         return new PageResult<>(result.getTotal(), result.getCurrent(), result.getSize(),
                 listItems.of(result.getRecords()));
@@ -282,10 +283,6 @@ public class ArticleService {
         article.setContent(request.getContent() == null ? "" : request.getContent());
         article.setSummary(StringUtils.hasText(request.getSummary()) ? request.getSummary() : "");
         article.setCover(StringUtils.hasText(request.getCover()) ? request.getCover() : "");
-    }
-
-    private String escapeLike(String keyword) {
-        return keyword.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_");
     }
 
     private void syncTags(Long articleId, List<String> tagNames) {

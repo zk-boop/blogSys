@@ -1,7 +1,10 @@
 package com.blogsys.service;
 
 import com.baomidou.mybatisplus.core.MybatisConfiguration;
+import com.baomidou.mybatisplus.core.conditions.AbstractWrapper;
+import com.baomidou.mybatisplus.core.conditions.Wrapper;
 import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.blogsys.common.BizException;
 import com.blogsys.entity.Article;
 import com.blogsys.entity.ArticleTag;
@@ -28,16 +31,19 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.Mockito.never;
@@ -248,5 +254,41 @@ class ArticleServiceTest {
 
         assertEquals(5L, vo.getId());
         verify(articleMapper, never()).incrViewCount(any());
+    }
+
+    // ---------- D12:同一个搜索框,前台与后台必须同一套规则 ----------
+
+    @Test
+    @DisplayName("公开搜索转义 LIKE 通配符 —— 搜「%」不该命中全部内容")
+    void page_shouldEscapeLikeWildcards() {
+        when(articleMapper.selectPage(any(), any())).thenReturn(new Page<>());
+
+        serviceFor(Viewer.of(1L, true)).page(1, 10, null, "100%_x");
+
+        // MyBatis-Plus 的 like 会自行在两端补 %,所以绑定值形如 %100\%\_x%
+        assertTrue(boundParams().contains("%100\\%\\_x%"),
+                "绑定的应当是转义后的模式串,实际: " + boundParams());
+    }
+
+    @Test
+    @DisplayName("后台搜索与公开搜索绑定同一个模式串 —— 此前只有前者转义了(D12)")
+    void adminPage_shouldEscapeLikeWildcards_likeThePublicSearch() {
+        when(articleMapper.selectPage(any(), any())).thenReturn(new Page<>());
+
+        serviceFor(Viewer.of(1L, true)).adminPage(1, 10, "100%_x", null, null);
+
+        assertTrue(boundParams().contains("%100\\%\\_x%"),
+                "后台与公开搜索必须给出同一个模式串,实际: " + boundParams());
+    }
+
+    /** 取出实际绑定到 SQL 的参数值。参数表是惰性填充的,所以必须先渲染一次。 */
+    private Collection<Object> boundParams() {
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<Wrapper<Article>> captor = ArgumentCaptor.forClass(Wrapper.class);
+        verify(articleMapper).selectPage(any(), captor.capture());
+        // getSqlSegment / getParamNameValuePairs 在 AbstractWrapper 上,不在 Wrapper 上
+        AbstractWrapper<Article, ?, ?> wrapper = (AbstractWrapper<Article, ?, ?>) captor.getValue();
+        wrapper.getSqlSegment();
+        return wrapper.getParamNameValuePairs().values();
     }
 }

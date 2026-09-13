@@ -3,6 +3,7 @@ package com.blogsys.service;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.blogsys.common.BizException;
+import com.blogsys.common.LikePattern;
 import com.blogsys.common.PageResult;
 import com.blogsys.common.UserStatus;
 import com.blogsys.entity.User;
@@ -70,8 +71,8 @@ public class AdminService {
         Page<User> result = userMapper.selectPage(new Page<>(page, size),
                 Wrappers.<User>lambdaQuery()
                         .and(StringUtils.hasText(keyword), w -> w
-                                .like(User::getUsername, keyword)
-                                .or().like(User::getNickname, keyword))
+                                .like(User::getUsername, LikePattern.of(keyword))
+                                .or().like(User::getNickname, LikePattern.of(keyword)))
                         .orderByDesc(User::getCreatedAt));
         List<UserVO> records = result.getRecords().stream().map(user -> {
             UserVO vo = AuthService.toVO(user);
