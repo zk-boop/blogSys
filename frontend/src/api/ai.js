@@ -47,8 +47,12 @@ export function aiChatStream(messages, { onTool, onMessage, onDone, onError, onA
         onError?.('连接中断,请重试')
       }
     } catch (err) {
+      // 用户点「停止」与页面导航都会让 fetch 变成 AbortError,那是正常收尾,不是错误
       if (err.name === 'AbortError') return
-      onError?.(err.message || '网络错误')
+      // err.message 是浏览器给的英文(network error / Failed to fetch),而这句话现在会被
+      // **存下来**、刷新之后还留在气泡里 —— 给用户看的东西只说人话,真正的原因留给控制台。
+      console.warn('AI 对话请求失败:', err)
+      onError?.('网络连接失败,请重试')
     }
   })()
 
