@@ -6,7 +6,7 @@ import { articleApi, commentApi, likeApi, recommendApi } from '../api'
 import { session } from '../session-instance'
 import { useUserStore } from '../stores/user'
 import { renderMarkdown, extractToc } from '../utils/markdown'
-import { avatarSrc } from '../utils/avatar'
+import { displayAvatar, displayName } from '../utils/person'
 import CommentItem from '../components/CommentItem.vue'
 import Lightbox from '../components/Lightbox.vue'
 
@@ -147,8 +147,8 @@ onBeforeUnmount(() => window.removeEventListener('scroll', onScroll))
         <h1 class="detail-title">{{ article.title }}</h1>
         <div class="detail-meta">
           <router-link :to="`/user/${article.author?.id}`" class="author">
-            <el-avatar :size="28" :src="avatarSrc(article.author?.avatar, article.author?.nickname || article.author?.username)" />
-            {{ article.author?.nickname || article.author?.username }}
+            <el-avatar :size="28" :src="displayAvatar(article.author)" />
+            {{ displayName(article.author) }}
           </router-link>
           <span>{{ article.createdAt?.slice(0, 10) }}</span>
           <span>浏览 {{ article.viewCount }}</span>
@@ -222,7 +222,7 @@ onBeforeUnmount(() => window.removeEventListener('scroll', onScroll))
           >
             <div class="recommend-title">{{ item.title }}</div>
             <div class="recommend-meta">
-              <span>{{ item.author?.nickname || item.author?.username }}</span>
+              <span>{{ displayName(item.author) }}</span>
               <el-tag v-for="tag in item.tags" :key="tag" size="small" effect="plain">{{ tag }}</el-tag>
               <span>浏览 {{ item.viewCount }}</span>
             </div>

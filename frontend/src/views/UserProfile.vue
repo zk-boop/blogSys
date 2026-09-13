@@ -5,7 +5,7 @@ import { userApi } from '../api'
 import ArticleCard from '../components/ArticleCard.vue'
 import ListPager from '../components/ListPager.vue'
 import { useList } from '../useList'
-import { avatarSrc } from '../utils/avatar'
+import { displayAvatar } from '../utils/person'
 
 const route = useRoute()
 const userId = () => Number(route.params.id)
@@ -50,7 +50,7 @@ onMounted(() => {
   <div>
     <el-empty v-if="invalidId()" description="用户不存在或已注销" />
     <el-card v-else-if="user" class="profile-head" shadow="never">
-      <el-avatar :size="80" :src="avatarSrc(user.avatar, user.nickname || user.username)" />
+      <el-avatar :size="80" :src="displayAvatar(user)" />
       <div class="info">
         <h2 class="nickname">{{ user.nickname }}</h2>
         <div class="username">@{{ user.username }}</div>

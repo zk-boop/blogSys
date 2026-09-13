@@ -4,7 +4,7 @@ import { ElMessage } from 'element-plus'
 import { commentApi } from '../api'
 import { session } from '../session-instance'
 import { useUserStore } from '../stores/user'
-import { avatarSrc } from '../utils/avatar'
+import { displayAvatar, displayName } from '../utils/person'
 
 const props = defineProps({
   comment: { type: Object, required: true },
@@ -56,12 +56,12 @@ async function submitReply() {
 <template>
   <div class="comment-item">
     <router-link :to="`/user/${comment.user?.id}`">
-      <el-avatar :size="32" :src="avatarSrc(comment.user?.avatar, comment.user?.nickname || comment.user?.username)" />
+      <el-avatar :size="32" :src="displayAvatar(comment.user)" />
     </router-link>
     <div class="comment-body">
       <div class="comment-head">
         <router-link :to="`/user/${comment.user?.id}`" class="comment-author">
-          {{ comment.user?.nickname || comment.user?.username }}
+          {{ displayName(comment.user) }}
         </router-link>
         <span class="comment-date">{{ comment.createdAt?.slice(0, 10) }}</span>
         <el-button v-if="store.isLoggedIn" class="reply-btn" link type="primary" @click="startReply(comment)">回复</el-button>
@@ -75,7 +75,7 @@ async function submitReply() {
           type="textarea"
           :rows="2"
           maxlength="1000"
-          :placeholder="`回复 @${replyingTo?.user?.nickname || replyingTo?.user?.username}`"
+          :placeholder="`回复 @${displayName(replyingTo?.user)}`"
         />
         <div class="reply-actions">
           <el-button size="small" @click="replying = false">取消</el-button>
@@ -86,14 +86,14 @@ async function submitReply() {
       <div v-if="comment.replies?.length" class="replies">
         <div v-for="reply in shownReplies()" :key="reply.id" class="reply-item">
           <router-link :to="`/user/${reply.user?.id}`">
-            <el-avatar :size="24" :src="avatarSrc(reply.user?.avatar, reply.user?.nickname || reply.user?.username)" />
+            <el-avatar :size="24" :src="displayAvatar(reply.user)" />
           </router-link>
           <div class="reply-body">
             <div class="comment-head">
               <router-link :to="`/user/${reply.user?.id}`" class="comment-author">
-                {{ reply.user?.nickname || reply.user?.username }}
+                {{ displayName(reply.user) }}
               </router-link>
-              <span v-if="reply.replyTo" class="reply-to">回复 @{{ reply.replyTo.nickname || reply.replyTo.username }}</span>
+              <span v-if="reply.replyTo" class="reply-to">回复 @{{ displayName(reply.replyTo) }}</span>
               <span class="comment-date">{{ reply.createdAt?.slice(0, 10) }}</span>
               <el-button v-if="store.isLoggedIn" class="reply-btn" link type="primary" @click="startReply(reply)">回复</el-button>
               <el-button

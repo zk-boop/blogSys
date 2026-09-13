@@ -2,7 +2,7 @@
 import { onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { adminApi } from '../../api'
-import { avatarSrc } from '../../utils/avatar'
+import { displayAvatar, displayName } from '../../utils/person'
 import ListPager from '../../components/ListPager.vue'
 import { useList } from '../../useList'
 
@@ -23,7 +23,7 @@ const {
 
 async function toggleBan(user) {
   const action = user.status === 1 ? '解封' : '封禁'
-  await ElMessageBox.confirm(`确定${action}用户「${user.nickname || user.username}」吗?`, '提示', { type: 'warning' })
+  await ElMessageBox.confirm(`确定${action}用户「${displayName(user)}」吗?`, '提示', { type: 'warning' })
   await adminApi.updateUserStatus(user.id, user.status === 1 ? 0 : 1)
   ElMessage.success(`已${action}`)
   loadUsers()
@@ -32,7 +32,7 @@ async function toggleBan(user) {
 async function toggleRole(user) {
   const nextRole = user.role === 'ADMIN' ? 'USER' : 'ADMIN'
   const action = nextRole === 'ADMIN' ? '设为管理员' : '取消管理员'
-  await ElMessageBox.confirm(`确定将「${user.nickname || user.username}」${action}吗?`, '提示', { type: 'warning' })
+  await ElMessageBox.confirm(`确定将「${displayName(user)}」${action}吗?`, '提示', { type: 'warning' })
   await adminApi.updateUserRole(user.id, nextRole)
   ElMessage.success(`已${action}`)
   loadUsers()
@@ -75,9 +75,9 @@ onMounted(loadUsers)
       <el-table-column label="用户" min-width="180">
         <template #default="{ row }">
           <div class="user-cell">
-            <el-avatar :size="28" :src="avatarSrc(row.avatar, row.nickname || row.username)" />
+            <el-avatar :size="28" :src="displayAvatar(row)" />
             <div>
-              <div class="user-name">{{ row.nickname || row.username }}</div>
+              <div class="user-name">{{ displayName(row) }}</div>
               <div class="user-sub">@{{ row.username }}</div>
             </div>
           </div>

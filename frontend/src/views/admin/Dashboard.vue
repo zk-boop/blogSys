@@ -2,6 +2,7 @@
 import { onMounted, ref } from 'vue'
 import { adminApi } from '../../api'
 import { formatCount } from '../../utils/format'
+import { displayName } from '../../utils/person'
 
 const stats = ref(null)
 const loading = ref(true)
@@ -49,7 +50,7 @@ const cards = [
       <el-table :data="stats?.hotArticles || []" size="small">
         <el-table-column prop="title" label="标题" min-width="240" show-overflow-tooltip />
         <el-table-column label="作者" width="120">
-          <template #default="{ row }">{{ row.author?.nickname || row.author?.username }}</template>
+          <template #default="{ row }">{{ displayName(row.author) }}</template>
         </el-table-column>
         <el-table-column prop="viewCount" label="浏览" width="90" />
         <el-table-column prop="likeCount" label="赞" width="80" />

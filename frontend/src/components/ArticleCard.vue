@@ -1,5 +1,5 @@
 <script setup>
-import { avatarSrc } from '../utils/avatar'
+import { displayAvatar, displayName } from '../utils/person'
 import { formatCount } from '../utils/format'
 
 defineProps({
@@ -24,8 +24,8 @@ defineProps({
         <p class="summary">{{ article.summary || '暂无摘要' }}</p>
         <div class="meta">
           <router-link :to="`/user/${article.author?.id}`" class="author">
-            <el-avatar :size="22" :src="avatarSrc(article.author?.avatar, article.author?.nickname || article.author?.username)" />
-            {{ article.author?.nickname || article.author?.username }}
+            <el-avatar :size="22" :src="displayAvatar(article.author)" />
+            {{ displayName(article.author) }}
           </router-link>
           <span class="date">{{ article.createdAt?.slice(0, 10) }}</span>
           <span class="stat">浏览 {{ formatCount(article.viewCount) }}</span>

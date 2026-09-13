@@ -5,6 +5,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { adminApi } from '../../api'
 import ListPager from '../../components/ListPager.vue'
 import { useList } from '../../useList'
+import { displayName } from '../../utils/person'
 
 const router = useRouter()
 
@@ -68,7 +69,7 @@ onMounted(loadComments)
         <template #default="{ row }">{{ row.content }}</template>
       </el-table-column>
       <el-table-column label="作者" width="120">
-        <template #default="{ row }">{{ row.user?.nickname || row.user?.username }}</template>
+        <template #default="{ row }">{{ displayName(row.user) }}</template>
       </el-table-column>
       <el-table-column label="所属文章" min-width="200" show-overflow-tooltip>
         <template #default="{ row }">

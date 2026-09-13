@@ -8,6 +8,7 @@ import ImageCropUpload from '../components/ImageCropUpload.vue'
 import ListPager from '../components/ListPager.vue'
 import { useList } from '../useList'
 import { avatarSrc } from '../utils/avatar'
+import { displayName } from '../utils/person'
 
 const store = useUserStore()
 
@@ -70,7 +71,9 @@ onMounted(loadMyArticles)
     <el-card class="profile-card" shadow="never">
       <template #header>个人资料</template>
       <div class="avatar-box">
-        <el-avatar :size="72" :src="avatarSrc(profileForm.avatar, store.user?.nickname || store.user?.username)" />
+        <!-- 这里刻意不用 displayAvatar:头像是**表单里那个值**(边输边预览),
+             不是 store 里那个。名字仍走 displayName,免得兜底规则出现第二份。 -->
+        <el-avatar :size="72" :src="avatarSrc(profileForm.avatar, displayName(store.user))" />
         <span class="username">@{{ store.user?.username }}</span>
         <ImageCropUpload
           button-text="上传头像"

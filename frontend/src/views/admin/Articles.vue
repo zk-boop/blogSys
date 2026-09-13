@@ -6,6 +6,7 @@ import { adminApi } from '../../api'
 import { formatCount } from '../../utils/format'
 import ListPager from '../../components/ListPager.vue'
 import { useList } from '../../useList'
+import { displayName } from '../../utils/person'
 
 const router = useRouter()
 /** 状态筛选是这一页自己的概念,由取数函数闭包带走。 */
@@ -84,7 +85,7 @@ onMounted(loadArticles)
         </template>
       </el-table-column>
       <el-table-column label="作者" width="120">
-        <template #default="{ row }">{{ row.author?.nickname || row.author?.username }}</template>
+        <template #default="{ row }">{{ displayName(row.author) }}</template>
       </el-table-column>
       <el-table-column label="状态" width="80">
         <template #default="{ row }">
