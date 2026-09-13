@@ -1,5 +1,6 @@
 package com.blogsys.visibility;
 
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.blogsys.entity.Comment;
 
 import java.util.List;
@@ -34,6 +35,23 @@ public interface Visibility {
      * 评论没有独立的状态字段 —— 它可见 ⟺ 所属文章可见 ∧ 评论作者未被封禁。
      */
     List<Comment> commentsOf(VisibleArticle article);
+
+    /**
+     * 把一个<b>以 article_id 引用文章</b>的外层查询,收窄到该 viewer 可见的文章上。
+     *
+     * <p>用于语料不是 {@code articles} 本身的场景(收藏列表、标签计数):那些查询的排序与分页
+     * 属于各自的概念,模块不该把它们整个吃掉,但「哪些文章可见」必须由模块说了算。
+     *
+     * <p><b>约定:</b>外层表的文章外键列名是 {@code article_id}。
+     * 本 schema 里四张引用文章的表(article_tags / comments / likes / favorites)都遵循它 ——
+     * 这也是唯一一处列名以字面量出现的地方,因为 MyBatis-Plus 的 {@code apply} / {@code exists}
+     * 不接受列引用,只能拼接;值仍然全部走绑定。有测试钉住这一点。
+     *
+     * <p><b>诚实说明这是本模块唯一可被忘记的一环。</b>它是个 wrapper 组合器,调用方不调它
+     * 就会拿到未过滤的行。之所以仍然这么做:把模块变成「所有读路径的拥有者」会让它
+     * interface 巨大而 leverage 很薄。真实的防线是调用点只有两处,且都被测试覆盖。
+     */
+    <R> LambdaQueryWrapper<R> restrictToVisibleArticles(LambdaQueryWrapper<R> wrapper);
 
     /**
      * 绑定到一个显式 viewer。

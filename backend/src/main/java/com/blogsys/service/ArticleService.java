@@ -144,32 +144,22 @@ public class ArticleService {
     }
 
     public PageResult<ArticleListItemVO> favoritesPage(long page, long size, Long userId) {
-        List<Favorite> favorites = favoriteMapper.selectList(Wrappers.<Favorite>lambdaQuery()
-                .eq(Favorite::getUserId, userId)
-                .orderByDesc(Favorite::getCreatedAt));
-        int total = favorites.size();
-        int from = (int) Math.min((page - 1) * size, total);
-        int to = (int) Math.min(from + size, total);
-        List<Favorite> slice = favorites.subList(from, to);
-        Map<Long, Article> articles = findByIds(slice.stream().map(Favorite::getArticleId).toList());
-        Set<Long> bannedIds = bannedUserIdsOf(articles.values());
-        List<Article> ordered = slice.stream()
+        // D6 的三个缺陷在这里一起消失:
+        //   1. 过滤在 SQL 里,不再「先 subList 再过滤」—— 页内条数不再少于 size
+        //   2. total 与 records 出自同一个 wrapper,不再是一个过滤、一个不过滤
+        //   3. 草稿不再泄漏(迁移前这里完全没有 status 条件,别人的草稿也会被返回)
+        Page<Favorite> favorites = favoriteMapper.selectPage(new Page<>(page, size),
+                visibility.restrictToVisibleArticles(Wrappers.<Favorite>lambdaQuery()
+                        .eq(Favorite::getUserId, userId)
+                        .orderByDesc(Favorite::getCreatedAt)));
+        Map<Long, Article> articles = findByIds(favorites.getRecords().stream()
+                .map(Favorite::getArticleId)
+                .toList());
+        List<Article> ordered = favorites.getRecords().stream()
                 .map(fav -> articles.get(fav.getArticleId()))
                 .filter(Objects::nonNull)
-                .filter(article -> !bannedIds.contains(article.getUserId()))
                 .toList();
-        return new PageResult<>(total, page, size, attachUserAndTags(ordered));
-    }
-
-    private Set<Long> bannedUserIdsOf(java.util.Collection<Article> articles) {
-        if (articles.isEmpty()) {
-            return Set.of();
-        }
-        List<Long> userIds = articles.stream().map(Article::getUserId).distinct().toList();
-        return userService.findByIds(userIds).values().stream()
-                .filter(user -> Integer.valueOf(1).equals(user.getStatus()))
-                .map(User::getId)
-                .collect(Collectors.toSet());
+        return new PageResult<>(favorites.getTotal(), page, size, attachUserAndTags(ordered));
     }
 
     private boolean isFavoritedByCurrentUser(Long articleId) {
@@ -228,7 +218,14 @@ public class ArticleService {
         cleanupOrphanTags(removedTagIds);
     }
 
-    public Map<Long, Article> findByIds(Collection<Long> ids) {
+    /**
+     * 按 id 批量取文章 —— <b>不做任何可见性过滤</b>,所以刻意不是 public。
+     *
+     * <p>迁移前它是 public 的,而唯一的调用者已经在 {@link #favoritesPage} 里
+     * 由 {@code restrictToVisibleArticles} 保证了前置条件。收紧可见性,是为了让它
+     * 不能再被当作一条绕过模块的读路径。
+     */
+    private Map<Long, Article> findByIds(Collection<Long> ids) {
         if (ids == null || ids.isEmpty()) {
             return Map.of();
         }

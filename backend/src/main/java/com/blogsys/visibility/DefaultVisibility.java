@@ -1,6 +1,7 @@
 package com.blogsys.visibility;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.blogsys.common.ArticleStatus;
 import com.blogsys.common.UserStatus;
 import com.blogsys.entity.Comment;
 import com.blogsys.mapper.ArticleMapper;
@@ -51,6 +52,37 @@ public class DefaultVisibility implements Visibility {
                     UserStatus.ACTIVE.getValue());
         }
         return commentMapper.selectList(wrapper);
+    }
+
+    /**
+     * 第三张表的情形:用<b>相关 EXISTS</b> 而不是不相关 IN。
+     *
+     * <p>{@code a.id = article_id} 走的是 articles 的主键,所以外层每行只是一次主键查找,
+     * 不需要任何新索引;而 {@code inSql} 那类不相关子查询要先把全部可见 id 物化出来。
+     * 谓词形式对性能没有影响(实测两种形式 MySQL 会优化成同一个计划),
+     * 这里选 EXISTS 是因为它在语义上就是「这一行引用的文章可见吗」,而且是逐行短路。
+     */
+    @Override
+    public <R> LambdaQueryWrapper<R> restrictToVisibleArticles(LambdaQueryWrapper<R> wrapper) {
+        Viewer viewer = viewerSource.current();
+        if (viewer.isAdmin()) {
+            return wrapper;
+        }
+        Long viewerId = viewer.id().orElse(null);
+        if (viewerId == null) {
+            wrapper.apply(true,
+                    "EXISTS (SELECT 1 FROM articles a WHERE a.id = article_id"
+                            + " AND a.status = {0}"
+                            + " AND a.user_id IN (SELECT id FROM users WHERE status = {1}))",
+                    ArticleStatus.PUBLISHED.getValue(), UserStatus.ACTIVE.getValue());
+        } else {
+            wrapper.apply(true,
+                    "EXISTS (SELECT 1 FROM articles a WHERE a.id = article_id"
+                            + " AND (a.status = {0} OR a.user_id = {1})"
+                            + " AND a.user_id IN (SELECT id FROM users WHERE status = {2}))",
+                    ArticleStatus.PUBLISHED.getValue(), viewerId, UserStatus.ACTIVE.getValue());
+        }
+        return wrapper;
     }
 
     @Override

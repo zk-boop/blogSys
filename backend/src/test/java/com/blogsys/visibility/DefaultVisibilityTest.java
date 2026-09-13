@@ -2,6 +2,7 @@ package com.blogsys.visibility;
 
 import com.baomidou.mybatisplus.core.MybatisConfiguration;
 import com.baomidou.mybatisplus.core.conditions.AbstractWrapper;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
 import com.blogsys.entity.Article;
 import com.blogsys.entity.Comment;
@@ -127,6 +128,57 @@ class DefaultVisibilityTest {
 
         assertFalse(sql.contains("FROM users"),
                 "令牌带的 viewer 应当胜过重新读环境,实际: " + sql);
+    }
+
+    @Test
+    @DisplayName("第三张表:非管理员用相关 EXISTS,列名是约定的 article_id,值全部走绑定")
+    @SuppressWarnings({"rawtypes", "unchecked"})
+    void restrictToVisibleArticles_shouldUseExistsWithBoundValues() {
+        Visibility visibility = visibilityFor(Viewer.anonymous());
+
+        LambdaQueryWrapper<com.blogsys.entity.Favorite> wrapper = visibility.restrictToVisibleArticles(
+                new LambdaQueryWrapper<com.blogsys.entity.Favorite>()
+                        .eq(com.blogsys.entity.Favorite::getUserId, 1L));
+        String sql = wrapper.getSqlSegment();
+        Map<String, Object> params = wrapper.getParamNameValuePairs();
+
+        assertTrue(sql.contains("EXISTS (SELECT 1 FROM articles a WHERE a.id = article_id"),
+                "外层的文章外键列名是 schema 的约定,实际: " + sql);
+        assertTrue(sql.contains("a.status = #{"), "已发布要绑定,实际: " + sql);
+        assertTrue(sql.contains("FROM users WHERE status = #{"), "封禁条件要绑定,实际: " + sql);
+        assertFalse(sql.matches(".*a\\.status\\s*=\\s*1.*"), "值不该出现在 SQL 文本里,实际: " + sql);
+        assertTrue(params.containsValue(1) && params.containsValue(0),
+                "参数表里应有已发布=1 与 正常=0,实际: " + params);
+    }
+
+    @Test
+    @DisplayName("第三张表:管理员完全不加限制")
+    @SuppressWarnings({"rawtypes", "unchecked"})
+    void restrictToVisibleArticles_shouldAddNothing_forAdmin() {
+        Visibility visibility = visibilityFor(Viewer.of(3L, true));
+
+        LambdaQueryWrapper<com.blogsys.entity.Favorite> wrapper = visibility.restrictToVisibleArticles(
+                new LambdaQueryWrapper<com.blogsys.entity.Favorite>()
+                        .eq(com.blogsys.entity.Favorite::getUserId, 1L));
+
+        assertFalse(wrapper.getSqlSegment().contains("EXISTS"),
+                "管理员不该有存在性限制,实际: " + wrapper.getSqlSegment());
+    }
+
+    @Test
+    @DisplayName("第三张表:登录 viewer 会带上「也包含我的草稿」分支")
+    @SuppressWarnings({"rawtypes", "unchecked"})
+    void restrictToVisibleArticles_shouldIncludeOwnDraftsBranch_forMember() {
+        Visibility visibility = visibilityFor(Viewer.of(7L, false));
+
+        LambdaQueryWrapper<com.blogsys.entity.Favorite> wrapper = visibility.restrictToVisibleArticles(
+                new LambdaQueryWrapper<com.blogsys.entity.Favorite>());
+        String sql = wrapper.getSqlSegment();
+
+        assertTrue(sql.contains("(a.status = #{") && sql.contains("a.user_id = #{"),
+                "登录者应当包含「已发布 或 是我自己的」分支,实际: " + sql);
+        assertTrue(wrapper.getParamNameValuePairs().containsValue(7L),
+                "viewer 的 id 应当作为绑定参数,实际: " + wrapper.getParamNameValuePairs());
     }
 
     @Test
