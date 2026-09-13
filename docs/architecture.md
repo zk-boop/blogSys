@@ -1201,5 +1201,68 @@ Node 的 ESM 解析器不做扩展名补全，而 Vite 会。仓库其余地方�
   在没有测试面的情况下改它，风险大于收益。
 - C 节剩余：C1、C3、C4。
 
+---
+
+## 23. C1：viewer 作为被接受的依赖（2026-09-13）
+
+### 23.1 同一个问题，两种写法
+
+评审报告 C 节说这一项时引的行号已经漂移（`CommentService.java:72-79` 现在是投影代码，
+不是 `catch → false`）。实际的读侧身份读取只剩 **两处**，而它们回答的是同一个问题、
+却各写各的：
+
+| 位置 | 写法 |
+|---|---|
+| `ArticleService.isFavoritedByCurrentUser` | 读 `SecurityUtil.currentUserId()`，它在匿名时**抛 401** ⇒ 必须 `catch (BizException e) { return false; }` 把一个表示「未登录」的异常当成控制流 |
+| `ArticleService.isLikedByCurrentUser` | 隔一百多行，直接判 `SecurityContextHolder` 里的 auth 是不是 `null` |
+
+两处现在都问 `ViewerSource` —— 模块读环境的**唯一**入口。「未登录」是它的一个
+**正常取值**（`Viewer.anonymous()`），不是异常，所以匿名分支成了一条普通路径。
+
+### 23.2 真正的收益在测试里
+
+此前想造一个「已收藏」的 viewer，只能去**改线程局部变量**
+（`docs/lessons.md` 第 26 条记着这类泄漏：同一个用例单跑通过、全量跑失败）。
+
+现在 `ViewerSource.fixed(...)` 就够了，而且测试把**同一个** `ViewerSource` 同时喂给
+可见性模块与 `ArticleService` —— 于是「这篇文章可见吗」与「我收藏过吗」不可能来自
+两个不同的人。
+
+**写侧刻意不动**：`requireOwnerOrAdmin` / `currentUserId` 仍在 `SecurityUtil`。
+那里「没有登录」确实是个错误（你不可能以匿名身份发表文章），不是正常取值 ——
+两种情形不该被统一。
+
+### 23.3 证据
+
+**自动化** 150 → 152：
+
+- 「收藏与点赞来自被接受的 viewer」—— 断言查询确实绑定了 viewer 的 id（文章 id 是 3、
+  viewer 是 7，绑定的参数里出现 7 就证明了问的是这个人）；
+- 「匿名 viewer 不查收藏与点赞」—— `never()`。**这条以前根本写不出来。**
+
+**实测**（真实接口）：
+
+| viewer | liked | `like_count` |
+|---|---|---|
+| 匿名 | false | 1 |
+| 管理员（本来就点赞过文章 3） | **true** | 1 |
+| toggle 关闭 | false | 0 |
+| toggle 打开 | true | 1 |
+
+数据还原：`likes=1 favorites=0 users=4 article_tags=4`。
+
+核对脚本第一次跑时，我按「基线未点赞」写断言，于是把一次**取消**点赞当成了点赞 ——
+真实行为一直是对的。这是本项目里第六次「断言错、行为对」；`docs/lessons.md` 第 11 条
+的反面说的就是这个。
+
+### 23.4 仍未覆盖的
+
+- **`AdminService` 的两处 `SecurityUtil.currentUserId()` 守卫没有改。** 它们问的是
+  「我是不是在改自己」，只出现在 ADMIN-only 的写路径上，`SecurityUtil` 抛 401 在那里
+  不可达 —— 与读侧的 viewer 是两件事。
+- **`AdminService` 的守卫仍然没有测试**（报告把它与那三处 `catch` 并列，但那三处现在
+  只剩两处，且都在 `ArticleService`）。
+- C 节剩余：C3、C4。
+
 
 
