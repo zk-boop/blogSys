@@ -23,13 +23,12 @@ import com.blogsys.security.LoginUser;
 import com.blogsys.security.SecurityUtil;
 import com.blogsys.visibility.ArticleQuery;
 import com.blogsys.visibility.Visibility;
+import com.blogsys.visibility.ViewerSource;
 import com.blogsys.vo.ArticleDetailVO;
 import com.blogsys.vo.ArticleListItemVO;
 import com.blogsys.vo.FavoriteVO;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DuplicateKeyException;
-import org.springframework.security.core.Authentication;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -39,6 +38,7 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -56,6 +56,11 @@ public class ArticleService {
     /** 列表项的组装(作者、标签、缩略图)归它 —— 详情页也走这里,于是形状只有一份。 */
     private final ArticleListItems listItems;
     private final Visibility visibility;
+    /**
+     * 「谁在看」的入口。读侧的身份读取一律问它 —— 与 {@link Visibility} 同一个来源,
+     * 于是「这篇文章可见吗」与「我收藏过吗」不可能来自两个不同的人。
+     */
+    private final ViewerSource viewerSource;
 
     public PageResult<ArticleListItemVO> page(long page, long size, Long tagId, String keyword) {
         ArticleQuery query = visibility.articles().orderByDesc(Article::getCreatedAt);
@@ -191,15 +196,28 @@ public class ArticleService {
         return new PageResult<>(favorites.getTotal(), page, size, listItems.of(ordered));
     }
 
+    /**
+     * 当前 viewer 是否收藏了这篇。
+     *
+     * <p><b>viewer 是被接受的依赖,不是环境状态。</b>这里此前读 {@code SecurityUtil.currentUserId()},
+     * 而它在匿名时**抛 401** —— 于是这个方法得用
+     * {@code try { … } catch (BizException e) { return false; } } 把一个表示「未登录」的异常
+     * 当成控制流;而同一个文件里隔一百多行的 {@link #isLikedByCurrentUser} 又换了种写法,
+     * 直接判 {@code SecurityContextHolder} 里的 auth 是不是 null。同一个问题、两种写法,
+     * 而匿名分支两边都没有测试。
+     *
+     * <p>现在两处都问 {@link ViewerSource}:「未登录」是它的一个**正常取值**
+     * ({@code Viewer.anonymous()}),不是异常。匿名分支因此成了一条普通路径 ——
+     * 用 {@code ViewerSource.fixed(Viewer.anonymous())} 就能直接测,不必去改线程局部变量。
+     */
     private boolean isFavoritedByCurrentUser(Long articleId) {
-        try {
-            Long userId = SecurityUtil.currentUserId();
-            return favoriteMapper.selectCount(Wrappers.<Favorite>lambdaQuery()
-                    .eq(Favorite::getUserId, userId)
-                    .eq(Favorite::getArticleId, articleId)) > 0;
-        } catch (BizException e) {
+        Optional<Long> userId = viewerSource.current().id();
+        if (userId.isEmpty()) {
             return false;
         }
+        return favoriteMapper.selectCount(Wrappers.<Favorite>lambdaQuery()
+                .eq(Favorite::getUserId, userId.get())
+                .eq(Favorite::getArticleId, articleId)) > 0;
     }
 
     public ArticleDetailVO editDetail(Long id) {
@@ -344,13 +362,14 @@ public class ArticleService {
         return articleTag;
     }
 
+    /** 与 {@link #isFavoritedByCurrentUser} 同一个来源、同一个写法 —— 它们回答的是同一个问题。 */
     private boolean isLikedByCurrentUser(Long articleId) {
-        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        if (auth == null || !(auth.getPrincipal() instanceof LoginUser loginUser)) {
+        Optional<Long> userId = viewerSource.current().id();
+        if (userId.isEmpty()) {
             return false;
         }
         return likeMapper.selectCount(Wrappers.<Like>lambdaQuery()
                 .eq(Like::getArticleId, articleId)
-                .eq(Like::getUserId, loginUser.getId())) > 0;
+                .eq(Like::getUserId, userId.get())) > 0;
     }
 }

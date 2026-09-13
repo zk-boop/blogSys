@@ -42,6 +42,7 @@ import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -100,10 +101,15 @@ class ArticleServiceTest {
     }
 
     private ArticleService serviceFor(Viewer viewer) {
-        Visibility visibility = new DefaultVisibility(articleMapper, commentMapper, ViewerSource.fixed(viewer));
+        // 一个 ViewerSource 同时喂给可见性模块与 ArticleService —— 于是「这篇文章可见吗」
+        // 与「我收藏过吗」不可能来自两个不同的人。在此之前前者读 ViewerSource、
+        // 后者读 SecurityContextHolder,而这个测试想造一个「已收藏」的 viewer 时
+        // 只能去改线程局部变量(见 docs/lessons.md 第 26 条)。
+        ViewerSource viewerSource = ViewerSource.fixed(viewer);
+        Visibility visibility = new DefaultVisibility(articleMapper, commentMapper, viewerSource);
         return new ArticleService(articleMapper, tagMapper, articleTagMapper, commentMapper,
                 likeMapper, favoriteMapper, new ArticleListItems(userService, articleTagMapper, tagMapper),
-                visibility);
+                visibility, viewerSource);
     }
 
     /** 只有走 SecurityUtil 的路径(所有权校验)才需要它。 */
@@ -228,11 +234,12 @@ class ArticleServiceTest {
     @Test
     @DisplayName("编辑态:不递增浏览量")
     void editDetail_shouldNotTouchViewCount() {
-        // 所有权校验走的是 SecurityUtil.requireOwnerOrAdmin,读的是 SecurityContextHolder,
-        // 而不是模块的 ViewerSource —— 本测试因此必须两处都设。
+        // 所有权校验走的是 SecurityUtil.requireOwnerOrAdmin,读的是 SecurityContextHolder ——
+        // 那是**写侧**的「你是不是这个动作的施动者」,与读侧的 viewer 是两件事,
+        // 所以本测试仍然两处都要设。
         //
-        // 这个摩擦本身是个设计信号:「谁在看」目前有两个来源,它们可以不一致。
-        // 统一它属于 §4.3(viewer 作为被接受的依赖),本次重构刻意不做,但值得记住。
+        // 读侧在 C1 之前也是这样(两处身份来源),现在统一到 ViewerSource 了;
+        // 写侧保持 SecurityUtil —— 那里「没有登录」确实是个错误,不是一个正常取值。
         authenticate(3L, "USER");
         when(articleMapper.selectById(7L)).thenReturn(article(7L, 3L, 1, 9));
         stubAttachments();
@@ -279,6 +286,58 @@ class ArticleServiceTest {
 
         assertTrue(boundParams().contains("%100\\%\\_x%"),
                 "后台与公开搜索必须给出同一个模式串,实际: " + boundParams());
+    }
+
+    // ---------- C1:viewer 是被接受的依赖,不是环境状态 ----------
+
+    @Test
+    @DisplayName("收藏与点赞来自被接受的 viewer,不必再伪造登录")
+    void detail_shouldReadInteractionFlags_fromTheViewerItWasGiven() {
+        when(articleMapper.selectOne(any())).thenReturn(article(3L, 3L, 1, 5));
+        stubAttachments();
+        when(favoriteMapper.selectCount(any())).thenReturn(1L);
+        when(likeMapper.selectCount(any())).thenReturn(1L);
+
+        ArticleDetailVO vo = serviceFor(Viewer.of(7L, false)).detail(3L);
+
+        assertTrue(vo.isFavorited(), "viewer 收藏过就该是 true");
+        assertTrue(vo.isLiked(), "viewer 点过赞就该是 true");
+        // 文章 id 是 3L、viewer 是 7L —— 绑定的参数里出现 7L,就证明确实问的是这个人
+        assertTrue(favoriteQueryBound(7L), "收藏查询该带 viewer 的 id");
+        assertTrue(likeQueryBound(7L), "点赞查询该带 viewer 的 id");
+    }
+
+    @Test
+    @DisplayName("匿名 viewer 不查收藏与点赞 —— 这是一条普通路径,不再靠 catch 一个 401 异常")
+    void detail_shouldNotQueryInteractions_forAnonymous() {
+        when(articleMapper.selectOne(any())).thenReturn(article(3L, 3L, 1, 5));
+        stubAttachments();
+
+        ArticleDetailVO vo = serviceFor(Viewer.anonymous()).detail(3L);
+
+        assertFalse(vo.isFavorited());
+        assertFalse(vo.isLiked());
+        verify(favoriteMapper, never()).selectCount(any());
+        verify(likeMapper, never()).selectCount(any());
+    }
+
+    /** 收藏查询绑定的参数里有没有这个值。参数表是惰性填充的,所以必须先渲染一次。 */
+    private boolean favoriteQueryBound(Long value) {
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<Wrapper<Favorite>> captor = ArgumentCaptor.forClass(Wrapper.class);
+        verify(favoriteMapper).selectCount(captor.capture());
+        AbstractWrapper<Favorite, ?, ?> wrapper = (AbstractWrapper<Favorite, ?, ?>) captor.getValue();
+        wrapper.getSqlSegment();
+        return wrapper.getParamNameValuePairs().containsValue(value);
+    }
+
+    private boolean likeQueryBound(Long value) {
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<Wrapper<Like>> captor = ArgumentCaptor.forClass(Wrapper.class);
+        verify(likeMapper).selectCount(captor.capture());
+        AbstractWrapper<Like, ?, ?> wrapper = (AbstractWrapper<Like, ?, ?>) captor.getValue();
+        wrapper.getSqlSegment();
+        return wrapper.getParamNameValuePairs().containsValue(value);
     }
 
     /** 取出实际绑定到 SQL 的参数值。参数表是惰性填充的,所以必须先渲染一次。 */
