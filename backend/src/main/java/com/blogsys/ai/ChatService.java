@@ -21,7 +21,6 @@ public class ChatService {
 
     private static final int MAX_TOOL_ROUNDS = 4;
     private static final int MAX_HISTORY = 20;
-    private static final int TOOL_RESULT_LIMIT = 4000;
     private static final String SYSTEM_PROMPT = """
             你是 blogSys 多人博客平台的内置 AI 助手,负责回答与平台内容相关的问题。
             你可以调用工具获取数据,工具返回 JSON 后请用自然语言总结回答,不要复述原始 JSON。
@@ -66,7 +65,7 @@ public class ChatService {
             // 此前它落到下面的兜底分支,被记成一条 `log.error("AI chat failed")` 加完整堆栈,
             // 并且还会朝一个已经不在的客户端发一句「AI 服务异常」——
             // 于是「用户关了页面」在日志里长得和「AI 服务挂了」一模一样。
-            log.debug("客户端已断开,对话中止: {}", e.getCause() == null ? "" : e.getCause().getMessage());
+            log.debug("客户端已断开,对话中止: {}", e.getMessage());
         } catch (BizException e) {
             egress.failed(e.getMessage());
         } catch (Exception e) {
@@ -80,12 +79,16 @@ public class ChatService {
      *
      * <p>把它转成一个内部信号,是为了让「写不出去」在下面那三个 catch 里能和
      * 「AI 服务真的出错了」分开 —— 两者此前不可区分,因为都是 Exception。
+     *
+     * <p>这个信号同时也是<b>轮间存活检查</b>的答案:{@code ChatEgress.stillConnected()}
+     * 说的就是「上一次写有没有成功」,而心跳负责让那次写按期发生。
      */
     private static void writeToClient(EgressWrite write) {
         try {
             write.write();
         } catch (Exception e) {
-            throw new ClientDisconnectedException(e);
+            throw new ClientDisconnectedException(
+                    e.getMessage() == null ? "连接已关闭" : e.getMessage(), e);
         }
     }
 
@@ -97,6 +100,15 @@ public class ChatService {
     /** 流式工具循环:内容增量实时转发;返回是否有未消费的工具调用(轮数耗尽)。 */
     private boolean runToolLoop(List<ChatMessage> messages, ChatEgress egress, Viewer viewer) throws Exception {
         for (int round = 0; round < MAX_TOOL_ROUNDS; round++) {
+            // 轮与轮之间问一次「客户端还在吗」。
+            //
+            // 此前没有这一问,于是浏览器上的「停止」传不到这里:用户点了停止,连接确实断了,
+            // 但服务端只在**下一次往客户端写**的时候才会发现 —— 而一次安静的模型轮次最长
+            // 可以有 120 秒,四轮加起来就是「点了停止,后台还在跑」。写不出去才是断连的证据,
+            // 而心跳(每 10 秒一个 SSE 注释帧)就是让这个证据按期发生的装置。
+            if (!egress.stillConnected()) {
+                throw new ClientDisconnectedException("客户端已断开");
+            }
             List<ChatMessage.ToolCall>[] toolCalls = new List[1];
             openAiClient.chatStream(messages, toolRegistry.definitions(viewer), new ChatStreamListener() {
                 @Override
@@ -146,9 +158,9 @@ public class ChatService {
             log.warn("tool {} failed: {}", name, e.getMessage());
             result = errorEnvelope(e.getMessage() == null ? "工具执行失败" : e.getMessage());
         }
-        if (result.length() > TOOL_RESULT_LIMIT) {
-            result = result.substring(0, TOOL_RESULT_LIMIT) + "…(已截断)";
-        }
+        // 结果的大小预算**不在这里**:在序列化之后的文本上切,必然切得出半段 JSON,
+        // 所以它归工具层 —— AbstractTool 的出口按结构裁(丢掉整条,不切开 token)。
+        // 这里原样转发:工具说什么,模型就听什么。
         String reported = result;
         writeToClient(() -> egress.toolFinished(name, args, reported));
         return reported;
@@ -185,11 +197,18 @@ public class ChatService {
      *
      * <p>它与「AI 服务出错」是两件事:前者是正常用户操作(关页面、点停止)导致的中止,
      * 后者才该记成服务故障。此前两者都是 Exception,于是只能一起记成后者。
+     *
+     * <p>{@code reason} 是给人看的一句话:它有两种来源 —— 一次真的写失败(带上底层
+     * 异常的话),以及轮间存活检查发现客户端已经不在(那时没有异常,只有结论)。
      */
     private static final class ClientDisconnectedException extends RuntimeException {
 
-        private ClientDisconnectedException(Throwable cause) {
-            super(cause);
+        private ClientDisconnectedException(String reason) {
+            super(reason);
+        }
+
+        private ClientDisconnectedException(String reason, Throwable cause) {
+            super(reason, cause);
         }
     }
 }

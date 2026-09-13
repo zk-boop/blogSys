@@ -8,7 +8,9 @@
  * <p>抽成纯函数之后:喂文本进去、看事件出来,`node --test` 直接覆盖(见
  * `aiEvents.test.js`)—— 包括最要紧的那条:**没有收到 `done` 就是被截断**。
  *
- * @param {{onTool?, onMessage?, onDone?, onError?}} handlers
+ * @param {{onTool?, onMessage?, onDone?, onError?, onAlive?}} handlers `onAlive` 收的是
+ *   注释帧(心跳),不是数据:服务端每 10 秒发一个,用来让「连接还活着」变成一个可观察
+ *   的事实 —— 在心跳出现之前,「AI 正在想」与「连接已经死了」在浏览器上不可区分。
  */
 export function createSseReader(handlers = {}) {
   let buffer = ''
@@ -17,6 +19,13 @@ export function createSseReader(handlers = {}) {
   let failed = false
 
   function consume(line) {
+    // 以 `:` 开头的行是 SSE 注释,服务端拿它当心跳。它只说明「连接还在」,
+    // 所以既不产生任何数据事件,也不算收尾凭证(finish 仍然只看 done/error)——
+    // 否则一次心跳就能把半截回答伪装成完整回答。
+    if (line.startsWith(':')) {
+      handlers.onAlive?.()
+      return
+    }
     if (line.startsWith('event:')) {
       event = line.slice(6).trim()
       return

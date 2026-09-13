@@ -65,10 +65,19 @@ class SseProtocolTest {
     }
 
     @Test
+    @DisplayName("心跳是注释帧 —— 以冒号开头,浏览器端的解析器按规范忽略它")
+    void comment_shouldBeAnSseComment() {
+        // 它不是事件:harness 这边靠它保活与探活(写不出去才知道客户端走了),
+        // 浏览器那边靠它区分「AI 正在想」与「连接已经死了」。
+        assertEquals(": ping\n\n", protocol.comment("ping"));
+    }
+
+    @Test
     @DisplayName("每个事件的帧都以空行结束 —— SSE 靠空行分帧,少一个就会粘住下一条")
     void everyFrame_shouldEndWithABlankLine() {
         for (String frame : new String[]{protocol.delta("x"), protocol.toolStarted("t", Map.of()),
-                protocol.toolFinished("t", Map.of(), "{}"), protocol.failed("m"), protocol.done()}) {
+                protocol.toolFinished("t", Map.of(), "{}"), protocol.failed("m"), protocol.done(),
+                protocol.comment("ping")}) {
             assertTrue(frame.endsWith("\n\n"), "实际: " + frame);
         }
     }

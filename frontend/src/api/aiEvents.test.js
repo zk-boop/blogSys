@@ -11,6 +11,7 @@ function recorder() {
     onMessage: (content) => calls.push(['message', content]),
     onDone: () => calls.push(['done']),
     onError: (message) => calls.push(['error', message]),
+    onAlive: () => calls.push(['alive']),
   })
   return { reader, calls }
 }
@@ -97,12 +98,32 @@ describe('createSseReader', () => {
     assert.deepEqual(calls, [['done']])
   })
 
-  it('忽略与协议无关的行(注释、: 心跳、其它字段)', () => {
+  it('注释行是心跳,只唤起 onAlive;其它与协议无关的行被忽略', () => {
     const { reader, calls } = recorder()
     reader.push(': keep-alive\nretry: 3000\nid: 7\n\n' + frame('done', '{}'))
 
     assert.equal(reader.finish(), 'done')
-    assert.deepEqual(calls, [['done']])
+    assert.deepEqual(calls, [['alive'], ['done']])
+  })
+
+  describe('心跳是「还活着」的信号,不是数据', () => {
+    it('心跳只唤起 onAlive —— 不产生 message/error,也不妨碍 done 收尾', () => {
+      const { reader, calls } = recorder()
+      reader.push(': ping\n\n' + frame('message', '{"content":"在"}') + frame('done', '{}'))
+
+      assert.equal(reader.finish(), 'done')
+      assert.deepEqual(calls, [['alive'], ['message', '在'], ['done']],
+        '整份调用记录已经说明:alive 与 message 各一次,error 一次也没有')
+    })
+
+    it('只收到心跳 ⇒ finish 仍然是 truncated —— 心跳不能伪装成收尾', () => {
+      const { reader, calls } = recorder()
+      reader.push(': ping\n\n: ping\n\n')
+
+      assert.equal(reader.finish(), 'truncated')
+      assert.deepEqual(calls, [['alive'], ['alive']],
+        '心跳若被当成收尾,一个断掉的对话就会看起来像一次完整回答')
+    })
   })
 
   it('event 名认不出来时什么都不做(未知帧不静默变成错误)', () => {

@@ -59,6 +59,19 @@ public class SseProtocol {
         return frame(DONE, "{}");
     }
 
+    /**
+     * SSE 注释帧 —— 心跳。
+     *
+     * <p>它不是事件:浏览器端的解析器(以及任何合格的 SSE 客户端)按规范**忽略**以冒号
+     * 开头的行。它的用途是让连接按期有字节:响应头因此在第一次写时就 flush,而
+     * 「写不出去」也就在安静期里按期变成一个可观察的事实(见 {@code ChatEgress.keepAlive})。
+     *
+     * <p>名字与频率是跨语言契约的一部分,记在 {@code docs/api.md} 那张表里。
+     */
+    public String comment(String text) {
+        return ": " + text + "\n\n";
+    }
+
     /** SSE 组帧:一行 {@code event}、一行 {@code data}、一个空行。 */
     public String frame(String event, String dataJson) {
         return "event:" + event + "\ndata:" + dataJson + "\n\n";

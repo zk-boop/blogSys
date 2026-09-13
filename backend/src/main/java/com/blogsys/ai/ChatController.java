@@ -21,6 +21,9 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.Executor;
 import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
 
 @RestController
 @RequestMapping("/api/ai")
@@ -29,10 +32,20 @@ import java.util.concurrent.RejectedExecutionException;
 @Slf4j
 public class ChatController {
 
+    /**
+     * 心跳间隔。**这是跨语言契约的一半**:浏览器端把「沉默 30 秒」读成断连
+     * (连丢三次心跳),所以两边必须一起改 —— 表在 {@code docs/api.md}。
+     *
+     * <p>10 秒这个数是这么定的:它远小于一次模型轮次(最长 120 秒,所以「安静」是常态,
+     * 不能一 silent 就当断),又短到「用户点了停止」在一两次心跳之内就能被服务端发现。
+     */
+    private static final long HEARTBEAT_SECONDS = 10L;
+
     private final ChatService chatService;
     private final Executor chatExecutor;
     private final ViewerSource viewerSource;
     private final SseProtocol sseProtocol;
+    private final ScheduledExecutorService heartbeatScheduler;
 
     @PostMapping(value = "/chat", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public void chat(@Valid @RequestBody ChatRequest request,
@@ -57,11 +70,18 @@ public class ChatController {
         // 这是「谁在问」穿过 seam 的那一步。它决定模型能看到哪些工具;域层(可见性模块)
         // 读到的 viewer 则由 AiExecutorConfig 的 TaskDecorator 从同一个请求线程带过去。
         Viewer viewer = viewerSource.current();
+        SseWriterHttp writer = new SseWriterHttp(servletResponse, sseProtocol);
         try {
             chatExecutor.execute(() -> {
+                // 心跳跟着对话一起开始、一起结束。它是这条路径上唯一按期发生的事:
+                // 没有它,响应头要等到第一个 token 才 flush,而「用户点了停止」要等到
+                // 下一次写才被发现 —— 那可能是一整个模型轮次之后。
+                ScheduledFuture<?> heartbeat = heartbeatScheduler.scheduleAtFixedRate(
+                        writer::keepAlive, 0L, HEARTBEAT_SECONDS, TimeUnit.SECONDS);
                 try {
-                    chatService.chat(messages, new SseWriterHttp(servletResponse, sseProtocol), viewer);
+                    chatService.chat(messages, writer, viewer);
                 } finally {
+                    heartbeat.cancel(false);
                     asyncContext.complete();
                 }
             });
@@ -72,7 +92,7 @@ public class ChatController {
             // 一次「服务器忙」在客户端上表现得和「AI 卡住了」一模一样。
             log.warn("AI 对话被拒绝(线程池已满): {}", e.getMessage());
             try {
-                new SseWriterHttp(servletResponse, sseProtocol).failed("AI 助手当前忙,请稍后重试");
+                writer.failed("AI 助手当前忙,请稍后重试");
             } finally {
                 asyncContext.complete();
             }

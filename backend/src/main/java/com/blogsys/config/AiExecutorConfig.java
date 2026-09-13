@@ -7,6 +7,8 @@ import org.springframework.security.concurrent.DelegatingSecurityContextRunnable
 import org.springframework.security.core.context.SecurityContextHolder;
 
 import java.util.concurrent.Executor;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
 
 /**
  * AI 对话异步执行线程池,SSE 流式输出需在独立线程中运行。
@@ -54,5 +56,20 @@ public class AiExecutorConfig {
                 new DelegatingSecurityContextRunnable(task, SecurityContextHolder.getContext()));
         executor.initialize();
         return executor;
+    }
+
+    /**
+     * 心跳的调度器:一场对话一个定时任务,每 10 秒往客户端写一个 SSE 注释帧。
+     *
+     * <p>单线程够用 —— 心跳是一行文本,而它的价值在于**按期发生**,不在于并发。
+     * 守护线程,所以它绝不会拖住关闭。
+     */
+    @Bean(destroyMethod = "shutdownNow")
+    public ScheduledExecutorService chatHeartbeatScheduler() {
+        return Executors.newSingleThreadScheduledExecutor(runnable -> {
+            Thread thread = new Thread(runnable, "ai-chat-heartbeat");
+            thread.setDaemon(true);
+            return thread;
+        });
     }
 }

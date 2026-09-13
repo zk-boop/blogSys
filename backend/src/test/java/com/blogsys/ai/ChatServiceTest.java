@@ -92,20 +92,30 @@ class ChatServiceTest {
         final List<String> events = new ArrayList<>();
         final StringBuilder answer = new StringBuilder();
         String failure;
+        /** 最后一次 toolFinished 交回给模型的原文。 */
+        String toolResult;
         /** true 时,往它写就抛 —— 模拟客户端已经断开。 */
-        private final boolean disconnected;
+        private final boolean writeFails;
+        /**
+         * 心跳探出来的结论:客户端还在不在。
+         *
+         * <p>它是**可变的**,因为真实场景恰恰是「对话跑着跑着客户端才不见的」:
+         * 用户点了停止,心跳写失败,而这时候池线程正卡在模型那一轮里。
+         */
+        boolean connected = true;
 
         Recorder() {
             this(false);
         }
 
-        Recorder(boolean disconnected) {
-            this.disconnected = disconnected;
+        Recorder(boolean writeFails) {
+            this.writeFails = writeFails;
+            this.connected = !writeFails;
         }
 
         @Override
         public void assistantDelta(String delta) {
-            if (disconnected) {
+            if (writeFails) {
                 throw new IllegalStateException("broken pipe");
             }
             events.add("delta");
@@ -120,6 +130,7 @@ class ChatServiceTest {
         @Override
         public void toolFinished(String name, Map<String, Object> args, String result) {
             events.add("toolFinished:" + name);
+            toolResult = result;
         }
 
         @Override
@@ -131,6 +142,16 @@ class ChatServiceTest {
         @Override
         public void ended() {
             events.add("ended");
+        }
+
+        @Override
+        public void keepAlive() {
+            events.add("keepAlive");
+        }
+
+        @Override
+        public boolean stillConnected() {
+            return connected;
         }
     }
 
@@ -297,6 +318,43 @@ class ChatServiceTest {
         assertNull(recorder.failure,
                 "客户端已经不在,没有收件人 —— 此前这里会朝它发一句「AI 服务异常」,"
                         + "并在日志里留下一条 log.error 加完整堆栈");
+    }
+
+    @Test
+    @DisplayName("轮与轮之间问一次「客户端还在吗」—— 点了停止,后台不会跑完剩下的轮次")
+    void chat_shouldStopBetweenRounds_whenTheClientIsGone() {
+        // 场景就是真实的那一个:用户在第一轮跑着的时候点了停止,心跳写失败、
+        // 把「客户端不在」记了下来 —— 而池线程这时候正卡在模型那一轮里,还什么都不知道。
+        Recorder recorder = recorder();
+        streamToolCalls(List.of(toolCall("call-1", "getHotArticles", "{}")));
+        streamAnswer("这一轮不该发生");
+        when(tool.execute(any())).thenAnswer(invocation -> {
+            recorder.connected = false;
+            return "{\"count\":5}";
+        });
+
+        chatService.chat(List.of(ChatMessage.user("有哪些热门文章")), recorder, VIEWER);
+
+        verify(openAiClient, times(1)).chatStream(any(), anyList(), any());
+        assertTrue(!recorder.events.contains("ended"),
+                "客户端不在,没有收尾凭证要发。实际: " + recorder.events);
+        assertNull(recorder.failure, "这不是服务故障,不该朝一个已经不在的客户端发错误");
+    }
+
+    @Test
+    @DisplayName("工具结果原样转发 —— 大小预算在工具层,不在这里切字符串")
+    void chat_shouldForwardTheToolResult_untouched() {
+        // 在序列化之后的文本上切,必然切得出半段 JSON(见 ResultBudgetTest 的对照)。
+        // 所以这条预算整个搬去了工具层,这里只负责转发。
+        String fromTool = "{\"count\":1,\"articles\":[{\"id\":1,\"title\":\"" + "长".repeat(5000) + "\"}]}";
+        streamToolCalls(List.of(toolCall("call-1", "getHotArticles", "{}")));
+        streamAnswer("已收到。");
+        when(tool.execute(any())).thenReturn(fromTool);
+
+        Recorder recorder = recorder();
+        chatService.chat(List.of(ChatMessage.user("x")), recorder, VIEWER);
+
+        assertEquals(fromTool, recorder.toolResult, "工具说什么,模型就听什么");
     }
 
     /** 第一次 chatStream 调用实际发出去的 tools 列表。 */

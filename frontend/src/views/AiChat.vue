@@ -2,6 +2,7 @@
 import { nextTick, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { aiChatStream } from '../api/ai'
+import { createAliveWatch } from '../api/liveness'
 import { renderMarkdown } from '../utils/markdown'
 
 const messages = ref([])
@@ -9,6 +10,11 @@ const input = ref('')
 const sending = ref(false)
 const listRef = ref(null)
 const controller = ref(null)
+/**
+ * 当前这场对话的存活守望者。故意不是 ref:它只被回调读写,进模板没有意义,
+ * 包成响应式反而会让人以为界面要跟着它重渲染。
+ */
+let aliveWatch = null
 
 const suggestions = [
   '站内有哪些热门文章?',
@@ -45,7 +51,28 @@ async function send(question) {
     .filter((m) => m.role === 'user' || (m.role === 'assistant' && m.content))
     .map((m) => ({ role: m.role, content: m.content }))
 
+  // 「AI 正在想」与「连接已经断了」在界面上本来是同一幅画面:都在等一个不来的字节。
+  // 服务端每 10 秒一个心跳,于是沉默变成可观察的事实 —— 表响就说明这场对话已经断了,
+  // 继续转圈只是在骗用户(以及让「停止」按钮看起来还有意义)。
+  //
+  // 句柄用这场对话自己的那个 watch(闭包里捕获),而不是作用域上那个变量:
+  // 停的必须是**这一场**的表。
+  const watch = createAliveWatch({
+    onStall: () => {
+      // 半截回答留在气泡里不删,但必须明说它不完整 —— 否则它和一次完整回答长得一样
+      assistant.error = '连接已中断,请重试'
+      sending.value = false
+      watch.stop()
+      // 表响 = 连接已经死了,那条 fetch 还挂在读一个不会来的字节。主动 abort 把它收掉,
+      // 顺带保证它的迟到回调不会再动界面(否则用户重发时会被上一场的结果打断)。
+      controller.value?.abort()
+      scrollToBottom()
+    },
+  })
+  aliveWatch = watch
+
   controller.value = aiChatStream(history, {
+    onAlive: () => watch.beat(),
     onTool: (tool) => {
       assistant.tools.push(tool)
       scrollToBottom()
@@ -55,9 +82,11 @@ async function send(question) {
       scrollToBottom()
     },
     onDone: () => {
+      watch.stop()
       sending.value = false
     },
     onError: (message) => {
+      watch.stop()
       assistant.error = message
       sending.value = false
       scrollToBottom()
@@ -67,6 +96,7 @@ async function send(question) {
 
 function stop() {
   controller.value?.abort()
+  aliveWatch?.stop()
   sending.value = false
   ElMessage.info('已停止生成')
 }

@@ -8,10 +8,11 @@ const API_BASE = '/api'
  *
  * <p>事件名与载荷形状的契约见 `docs/api.md`(服务端那边的唯一归属是 `SseProtocol`);
  * 线格式的解析归 `./aiEvents`,这里只剩「发请求、读字节、把文本喂进去」。
+ * 心跳(注释帧)只是原样转给 `onAlive`,怎么解读归调用方 —— 这里不做判断。
  *
  * <p>返回 AbortController,可调用 abort() 停止。
  */
-export function aiChatStream(messages, { onTool, onMessage, onDone, onError }) {
+export function aiChatStream(messages, { onTool, onMessage, onDone, onError, onAlive }) {
   const controller = new AbortController()
 
   ;(async () => {
@@ -34,7 +35,7 @@ export function aiChatStream(messages, { onTool, onMessage, onDone, onError }) {
 
       const reader = res.body.getReader()
       const decoder = new TextDecoder('utf-8')
-      const sse = createSseReader({ onTool, onMessage, onDone, onError })
+      const sse = createSseReader({ onTool, onMessage, onDone, onError, onAlive })
       while (true) {
         const { done, value } = await reader.read()
         if (done) break
