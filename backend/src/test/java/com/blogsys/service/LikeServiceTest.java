@@ -7,6 +7,7 @@ import com.blogsys.mapper.ArticleMapper;
 import com.blogsys.mapper.LikeMapper;
 import com.blogsys.security.LoginUser;
 import com.blogsys.vo.LikeVO;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -39,6 +40,12 @@ class LikeServiceTest {
         likeService = new LikeService(likeMapper, articleMapper);
         SecurityContextHolder.getContext().setAuthentication(
                 new UsernamePasswordAuthenticationToken(new LoginUser(1L, "alice", "USER"), null));
+    }
+
+    @AfterEach
+    void clearSecurityContext() {
+        // 不清的话,登录态会泄漏给后面跑的测试类:线程局部的寿命比这个类长。
+        SecurityContextHolder.clearContext();
     }
 
     @Test

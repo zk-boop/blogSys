@@ -8,6 +8,7 @@ import com.blogsys.mapper.ArticleMapper;
 import com.blogsys.mapper.CommentMapper;
 import com.blogsys.security.LoginUser;
 import com.blogsys.vo.CommentVO;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -42,6 +43,13 @@ class CommentServiceTest {
         commentService = new CommentService(commentMapper, articleMapper, userService);
         SecurityContextHolder.getContext().setAuthentication(
                 new UsernamePasswordAuthenticationToken(new LoginUser(1L, "alice", "USER"), null));
+    }
+
+    @AfterEach
+    void clearSecurityContext() {
+        // 不清的话,登录态会泄漏给后面跑的测试类:线程局部的寿命比这个类长。
+        // 实测它曾让 ViewerSourceTest 在「无上下文」用例里拿到 Viewer(1)。
+        SecurityContextHolder.clearContext();
     }
 
     @Test
