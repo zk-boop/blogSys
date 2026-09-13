@@ -150,7 +150,7 @@
 | # | 项 | 说明 |
 |---|---|---|
 | C1 | viewer 作为被接受的依赖 | 工具层已显式(候选 02);域层仍走 `ViewerSource`。三处 `catch → false` 的匿名分支与 `AdminService` 的守卫因此都没有测试 |
-| C2 | 上传资产的命名约定散在三处 | 写方生成 `base + "-thumb.jpg"`;读方用正则反推;而 `saveOriginal` 对 jpg/png/gif 之外的原图不写缩略图 ⇒ 会合成一个从未写入的文件名,列表页去请求它就会 404 |
+| C2 | ~~上传资产的命名约定散在三处~~ | **已完成**(§20)。`saveOriginal` 现在也写缩略图(让命名约定成为事实)、`writeThumb` 抽出来、`type` 白名单化。**残留**:解码不了的原图仍会 404 —— 关掉它需要「把缩略图 URL 存进文章」(表结构变更,需显式决策)或「读取时查文件是否存在」(投影不该做 I/O) |
 | C3 | 工具结果没有信封 | 参数强转被复制三次;schema 无 `required`;错误是字符串拼的 JSON(驱动消息里一个引号就能造出坏 JSON);截断两处且都可能切在字符串中间;`AbstractTool` 无抽象成员;`json()` 把序列化失败吞成假成功;`toolResult` 收了 name 又丢掉;`ToolRegistry` 用 `Collectors.toMap` 建表,重名会在启动时崩 |
 | C4 | 对话生命周期与取消不在内核里 | 稳态并发 2、另 20 个静默排队(见 §5.5);拒绝时客户端收不到任何 SSE 错误;轮与轮之间无存活检查 ⇒ 浏览器「停止」传不到服务端;无心跳帧 |
 | C5 | 用户显示的 fallback 约 20 份 | `nickname \|\| username` 散在 9 个 module;`avatarSrc` 藏了「dicebear URL 一律丢弃」这条规则 |
