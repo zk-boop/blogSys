@@ -63,7 +63,8 @@ class CommentServiceTest {
         Article article = new Article();
         article.setId(10L);
         article.setStatus(1);
-        when(articleMapper.selectById(10L)).thenReturn(article);
+        // 可见性检查走模块(内部用 selectOne),不再是 service 自己 selectById + 判 status
+        when(articleMapper.selectOne(any())).thenReturn(article);
 
         CommentRequest request = new CommentRequest();
         request.setContent("写得好!");
@@ -80,7 +81,8 @@ class CommentServiceTest {
         Article article = new Article();
         article.setId(10L);
         article.setStatus(1);
-        when(articleMapper.selectById(10L)).thenReturn(article);
+        // 可见性检查走模块(内部用 selectOne),不再是 service 自己 selectById + 判 status
+        when(articleMapper.selectOne(any())).thenReturn(article);
 
         Comment topLevel = new Comment();
         topLevel.setId(1L);
@@ -105,7 +107,8 @@ class CommentServiceTest {
         Article article = new Article();
         article.setId(10L);
         article.setStatus(1);
-        when(articleMapper.selectById(10L)).thenReturn(article);
+        // 可见性检查走模块(内部用 selectOne),不再是 service 自己 selectById + 判 status
+        when(articleMapper.selectOne(any())).thenReturn(article);
         when(commentMapper.selectById(99L)).thenReturn(null);
 
         CommentRequest request = new CommentRequest();
@@ -117,7 +120,8 @@ class CommentServiceTest {
 
     @Test
     void create_shouldFail_whenArticleNotExists() {
-        when(articleMapper.selectById(10L)).thenReturn(null);
+        // 模块判定不可见/不存在时 find 拿不到行 —— 两者是同一条路径、同一个 404
+        when(articleMapper.selectOne(any())).thenReturn(null);
 
         CommentRequest request = new CommentRequest();
         request.setContent("写得好!");

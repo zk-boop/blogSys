@@ -83,10 +83,8 @@ public class CommentService {
 
     @Transactional
     public CommentVO create(Long articleId, CommentRequest request) {
-        Article article = articleMapper.selectById(articleId);
-        if (article == null || article.getStatus() != ArticleStatus.PUBLISHED.getValue()) {
-            throw new BizException(404, "文章不存在");
-        }
+        // 不可见 = 不存在,写操作也一样(见 ADR-0001)
+        visibility.articles().require(articleId);
         Long parentId = request.getParentId();
         if (parentId != null) {
             Comment parent = commentMapper.selectById(parentId);

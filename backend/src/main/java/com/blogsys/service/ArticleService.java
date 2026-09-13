@@ -127,10 +127,7 @@ public class ArticleService {
 
     @Transactional
     public FavoriteVO toggleFavorite(Long articleId) {
-        Article article = articleMapper.selectById(articleId);
-        if (article == null || article.getStatus() != ArticleStatus.PUBLISHED.getValue()) {
-            throw new BizException(404, "文章不存在");
-        }
+        visibility.articles().require(articleId);
         Long userId = SecurityUtil.currentUserId();
         Favorite existing = favoriteMapper.selectOne(Wrappers.<Favorite>lambdaQuery()
                 .eq(Favorite::getUserId, userId)
