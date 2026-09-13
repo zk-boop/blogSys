@@ -6,17 +6,14 @@ import com.blogsys.common.BizException;
 import com.blogsys.entity.Article;
 import com.blogsys.entity.ArticleTag;
 import com.blogsys.entity.Tag;
-import com.blogsys.entity.User;
 import com.blogsys.mapper.ArticleMapper;
 import com.blogsys.mapper.ArticleTagMapper;
 import com.blogsys.mapper.TagMapper;
 import com.blogsys.visibility.Visibility;
 import com.blogsys.vo.ArticleListItemVO;
-import com.blogsys.vo.UserBriefVO;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
-import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -45,7 +42,8 @@ public class RecommendService {
     private final ArticleMapper articleMapper;
     private final ArticleTagMapper articleTagMapper;
     private final TagMapper tagMapper;
-    private final UserService userService;
+    /** 列表项的组装归它 —— 推荐结果与其它列表因此形状一致(含 coverThumb)。 */
+    private final ArticleListItems listItems;
     private final Visibility visibility;
 
     public List<ArticleListItemVO> recommend(Long articleId, int size) {
@@ -68,19 +66,35 @@ public class RecommendService {
         Map<Long, Set<String>> tagsByArticle = tagsOf(
                 candidates.stream().map(Article::getId).collect(Collectors.toSet()));
 
-        List<ArticleListItemVO> result = new ArrayList<>();
-        for (Article candidate : candidates) {
-            Set<String> tags = tagsByArticle.getOrDefault(candidate.getId(), Set.of());
-            Set<String> kw = keywords(candidate.getTitle(), candidate.getSummary(), candidate.getContent());
-            double score = score(targetTags, targetKeywords, tags, kw);
-            if (score > 0) {
-                result.add(build(candidate, tags, score));
-            }
+        // 先算分、排序、截到前 N,**再一次性投影**。
+        //
+        // 迁移前是在这个循环里逐篇 userService.findByIds(...) 取作者:候选最多 100 篇,
+        // 于是最坏 100 次查询;而单测里的 userService 是 mock,数不出查询次数,
+        // 所以这笔 N+1 从来没有被任何东西发现过。
+        Comparator<Scored> byScoreDesc = Comparator.comparingDouble(Scored::score).reversed();
+        Comparator<Scored> byViewsDesc = Comparator.comparingInt(
+                (Scored scored) -> scored.article().getViewCount() == null
+                        ? 0 : scored.article().getViewCount()).reversed();
+        List<Scored> top = candidates.stream()
+                .map(candidate -> new Scored(candidate, score(targetTags, targetKeywords,
+                        tagsByArticle.getOrDefault(candidate.getId(), Set.of()),
+                        keywords(candidate.getTitle(), candidate.getSummary(), candidate.getContent()))))
+                .filter(scored -> scored.score() > 0)
+                .sorted(byScoreDesc.thenComparing(byViewsDesc))
+                .limit(Math.min(size, 10))
+                .toList();
+
+        // 作者与标签各一次查询,与返回条数无关。封面缩略图也从此一并到位 ——
+        // 迁移前这条路径漏掉了 coverThumb,前端用 `coverThumb || cover` 把它掩盖了。
+        List<ArticleListItemVO> result = listItems.of(top.stream().map(Scored::article).toList());
+        for (int i = 0; i < result.size(); i++) {
+            result.get(i).setRecommendScore(top.get(i).score());
         }
-        result.sort(Comparator
-                .comparingDouble(ArticleListItemVO::getRecommendScore).reversed()
-                .thenComparing(ArticleListItemVO::getViewCount, Comparator.reverseOrder()));
-        return result.stream().limit(Math.min(size, 10)).toList();
+        return result;
+    }
+
+    /** 候选与它的得分 —— 排序发生在投影之前,于是投影只需处理最终那几篇。 */
+    private record Scored(Article article, double score) {
     }
 
     private double score(Set<String> targetTags, Set<String> targetKeywords,
@@ -88,26 +102,6 @@ public class RecommendService {
         int sharedTags = intersectSize(targetTags, tags);
         int sharedKeywords = intersectSize(targetKeywords, keywords);
         return sharedTags * 5.0 + sharedKeywords * 2.0;
-    }
-
-    private ArticleListItemVO build(Article article, Set<String> tags, double score) {
-        ArticleListItemVO vo = new ArticleListItemVO();
-        vo.setId(article.getId());
-        vo.setTitle(article.getTitle());
-        vo.setSummary(article.getSummary());
-        vo.setCover(article.getCover());
-        vo.setStatus(article.getStatus());
-        vo.setViewCount(article.getViewCount());
-        vo.setLikeCount(article.getLikeCount());
-        vo.setCommentCount(article.getCommentCount());
-        vo.setCreatedAt(article.getCreatedAt());
-        vo.setRecommendScore(score);
-        User user = userService.findByIds(List.of(article.getUserId())).get(article.getUserId());
-        if (user != null) {
-            vo.setAuthor(new UserBriefVO(user.getId(), user.getUsername(), user.getNickname(), user.getAvatar()));
-        }
-        vo.setTags(new ArrayList<>(tags));
-        return vo;
     }
 
     private Map<Long, Set<String>> tagsOf(Set<Long> articleIds) {

@@ -84,7 +84,8 @@ class RecommendServiceTest {
 
     @BeforeEach
     void setUp() {
-        recommendService = new RecommendService(articleMapper, articleTagMapper, tagMapper, userService,
+        recommendService = new RecommendService(articleMapper, articleTagMapper, tagMapper,
+                new ArticleListItems(userService, articleTagMapper, tagMapper),
                 new DefaultVisibility(articleMapper, commentMapper, ViewerSource.fixed(Viewer.anonymous())));
     }
 
@@ -164,6 +165,29 @@ class RecommendServiceTest {
         assertEquals(4L, result.get(1).getId());
         assertEquals(List.of("java"), result.get(0).getTags());
         assertTrue(result.get(0).getRecommendScore() > result.get(1).getRecommendScore());
+    }
+
+    @Test
+    @DisplayName("推荐结果与其它列表形状一致 —— coverThumb 不再缺失")
+    void recommend_shouldCarryCoverThumb_likeEveryOtherList() {
+        // 这条钉住的是那份漂移:推荐器曾经逐字复制九个字段、独独漏掉 coverThumb,
+        // 而前端用 `coverThumb || cover` 把缺失悄悄降级掩盖了。
+        Article target = published(1L, 10L, "Java 入门指南", "JVM 基础");
+        Article candidate = published(2L, 11L, "Java 深入解析", "类加载机制");
+        candidate.setCover("/uploads/cover.jpg");
+        when(articleMapper.selectOne(any())).thenReturn(target);
+        when(articleMapper.selectList(any())).thenReturn(List.of(candidate));
+        when(userService.findByIds(any())).thenReturn(Map.of(11L, active(11L)));
+        when(tagMapper.selectBatchIds(List.of(1L))).thenReturn(List.of(tag(1L, "java")));
+        when(articleTagMapper.selectList(any())).thenReturn(List.of(rel(1L, 1L), rel(2L, 1L)));
+
+        List<ArticleListItemVO> result = recommendService.recommend(1L, 5);
+
+        assertEquals(1, result.size());
+        assertEquals("/uploads/cover-thumb.jpg", result.get(0).getCoverThumb(),
+                "推荐接口此前不带 coverThumb");
+        assertEquals(11L, result.get(0).getAuthor().getId(), "作者也要在");
+        assertEquals(List.of("java"), result.get(0).getTags());
     }
 
     @Test

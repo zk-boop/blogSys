@@ -96,7 +96,8 @@ class ArticleServiceTest {
     private ArticleService serviceFor(Viewer viewer) {
         Visibility visibility = new DefaultVisibility(articleMapper, commentMapper, ViewerSource.fixed(viewer));
         return new ArticleService(articleMapper, tagMapper, articleTagMapper, commentMapper,
-                likeMapper, favoriteMapper, userService, visibility);
+                likeMapper, favoriteMapper, new ArticleListItems(userService, articleTagMapper, tagMapper),
+                visibility);
     }
 
     /** 只有走 SecurityUtil 的路径(所有权校验)才需要它。 */

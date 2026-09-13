@@ -34,7 +34,13 @@ defineProps({
         </div>
       </div>
       <router-link v-if="article.cover" :to="`/article/${article.id}`" class="cover-link">
-        <img :src="article.coverThumb || article.cover" class="cover" alt="cover" />
+        <!--
+          直接用它,不再 `coverThumb || cover`:那张回退规则属于投影模块
+          (找不到缩略图时它会返回原图 —— webp 与非 /uploads 路径就是这种情况),
+          前端再实现一遍等于给同一个决定留了两个主人。
+          这个 `|| cover` 当初还顺手掩盖了推荐接口漏掉 coverThumb 这件事。
+        -->
+        <img :src="article.coverThumb" class="cover" alt="cover" />
       </router-link>
     </div>
   </el-card>

@@ -12,7 +12,6 @@ import com.blogsys.entity.Comment;
 import com.blogsys.entity.Favorite;
 import com.blogsys.entity.Like;
 import com.blogsys.entity.Tag;
-import com.blogsys.entity.User;
 import com.blogsys.mapper.ArticleMapper;
 import com.blogsys.mapper.ArticleTagMapper;
 import com.blogsys.mapper.CommentMapper;
@@ -26,7 +25,6 @@ import com.blogsys.visibility.Visibility;
 import com.blogsys.vo.ArticleDetailVO;
 import com.blogsys.vo.ArticleListItemVO;
 import com.blogsys.vo.FavoriteVO;
-import com.blogsys.vo.UserBriefVO;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.security.core.Authentication;
@@ -54,7 +52,8 @@ public class ArticleService {
     private final CommentMapper commentMapper;
     private final LikeMapper likeMapper;
     private final FavoriteMapper favoriteMapper;
-    private final UserService userService;
+    /** 列表项的组装(作者、标签、缩略图)归它 —— 详情页也走这里,于是形状只有一份。 */
+    private final ArticleListItems listItems;
     private final Visibility visibility;
 
     public PageResult<ArticleListItemVO> page(long page, long size, Long tagId, String keyword) {
@@ -75,7 +74,7 @@ public class ArticleService {
         }
         Page<Article> result = query.page(page, size);
         return new PageResult<>(result.getTotal(), result.getCurrent(), result.getSize(),
-                attachUserAndTags(result.getRecords()));
+                listItems.of(result.getRecords()));
     }
 
     /**
@@ -95,7 +94,7 @@ public class ArticleService {
                 .orderByDesc(Article::getCreatedAt);
         Page<Article> result = query.page(page, size);
         return new PageResult<>(result.getTotal(), result.getCurrent(), result.getSize(),
-                attachUserAndTags(result.getRecords()));
+                listItems.of(result.getRecords()));
     }
 
     public List<ArticleListItemVO> hot(int size) {
@@ -103,7 +102,7 @@ public class ArticleService {
                 .where(w -> w.gt(Article::getViewCount, 0))
                 .orderByDesc(Article::getViewCount)
                 .list(Math.min(size, 20));
-        return attachUserAndTags(articles);
+        return listItems.of(articles);
     }
 
     public PageResult<ArticleListItemVO> adminPage(long page, long size, String keyword, Integer status, Long userId) {
@@ -116,7 +115,7 @@ public class ArticleService {
                                 .or().like(Article::getContent, keyword))
                         .orderByDesc(Article::getCreatedAt));
         return new PageResult<>(result.getTotal(), result.getCurrent(), result.getSize(),
-                attachUserAndTags(result.getRecords()));
+                listItems.of(result.getRecords()));
     }
 
     /**
@@ -131,11 +130,10 @@ public class ArticleService {
         Article article = visibility.articles().includingOwnDrafts().require(id).article();
 
         ArticleDetailVO vo = new ArticleDetailVO();
-        copyBase(article, vo);
+        listItems.fill(article, vo);
         vo.setContent(article.getContent());
         vo.setLiked(isLikedByCurrentUser(id));
         vo.setFavorited(isFavoritedByCurrentUser(id));
-        attachAuthorAndTags(vo, article);
         return vo;
     }
 
@@ -189,7 +187,7 @@ public class ArticleService {
                 .map(fav -> articles.get(fav.getArticleId()))
                 .filter(Objects::nonNull)
                 .toList();
-        return new PageResult<>(favorites.getTotal(), page, size, attachUserAndTags(ordered));
+        return new PageResult<>(favorites.getTotal(), page, size, listItems.of(ordered));
     }
 
     private boolean isFavoritedByCurrentUser(Long articleId) {
@@ -206,9 +204,8 @@ public class ArticleService {
     public ArticleDetailVO editDetail(Long id) {
         Article article = requireOwnArticle(id);
         ArticleDetailVO vo = new ArticleDetailVO();
-        copyBase(article, vo);
+        listItems.fill(article, vo);
         vo.setContent(article.getContent());
-        attachAuthorAndTags(vo, article);
         return vo;
     }
 
@@ -350,48 +347,6 @@ public class ArticleService {
         return articleTag;
     }
 
-    private List<ArticleListItemVO> attachUserAndTags(List<Article> articles) {
-        if (articles.isEmpty()) {
-            return new ArrayList<>();
-        }
-        List<Long> userIds = articles.stream().map(Article::getUserId).distinct().toList();
-        Map<Long, User> users = userService.findByIds(userIds);
-        Map<Long, List<String>> tagsByArticle = findTagsByArticles(
-                articles.stream().map(Article::getId).toList());
-        return articles.stream().map(article -> {
-            ArticleListItemVO vo = new ArticleListItemVO();
-            copyBase(article, vo);
-            User user = users.get(article.getUserId());
-            if (user != null) {
-                vo.setAuthor(new UserBriefVO(user.getId(), user.getUsername(), user.getNickname(), user.getAvatar()));
-            }
-            vo.setTags(tagsByArticle.getOrDefault(article.getId(), List.of()));
-            return vo;
-        }).toList();
-    }
-
-    private void attachAuthorAndTags(ArticleListItemVO vo, Article article) {
-        User user = userService.findByIds(List.of(article.getUserId())).get(article.getUserId());
-        if (user != null) {
-            vo.setAuthor(new UserBriefVO(user.getId(), user.getUsername(), user.getNickname(), user.getAvatar()));
-        }
-        vo.setTags(findTagsByArticles(List.of(article.getId())).getOrDefault(article.getId(), List.of()));
-    }
-
-    private Map<Long, List<String>> findTagsByArticles(List<Long> articleIds) {
-        List<ArticleTag> relations = articleTagMapper.selectList(
-                Wrappers.<ArticleTag>lambdaQuery().in(ArticleTag::getArticleId, articleIds));
-        if (relations.isEmpty()) {
-            return Map.of();
-        }
-        List<Long> tagIds = relations.stream().map(ArticleTag::getTagId).distinct().toList();
-        Map<Long, String> tagNames = tagMapper.selectBatchIds(tagIds).stream()
-                .collect(Collectors.toMap(Tag::getId, Tag::getName));
-        return relations.stream().collect(Collectors.groupingBy(
-                ArticleTag::getArticleId,
-                Collectors.mapping(at -> tagNames.get(at.getTagId()), Collectors.toList())));
-    }
-
     private boolean isLikedByCurrentUser(Long articleId) {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         if (auth == null || !(auth.getPrincipal() instanceof LoginUser loginUser)) {
@@ -400,25 +355,5 @@ public class ArticleService {
         return likeMapper.selectCount(Wrappers.<Like>lambdaQuery()
                 .eq(Like::getArticleId, articleId)
                 .eq(Like::getUserId, loginUser.getId())) > 0;
-    }
-
-    private void copyBase(Article article, ArticleListItemVO vo) {
-        vo.setId(article.getId());
-        vo.setTitle(article.getTitle());
-        vo.setSummary(article.getSummary());
-        vo.setCover(article.getCover());
-        vo.setCoverThumb(coverThumbOf(article.getCover()));
-        vo.setStatus(article.getStatus());
-        vo.setViewCount(article.getViewCount());
-        vo.setLikeCount(article.getLikeCount());
-        vo.setCommentCount(article.getCommentCount());
-        vo.setCreatedAt(article.getCreatedAt());
-    }
-
-    private String coverThumbOf(String cover) {
-        if (!StringUtils.hasText(cover) || !cover.startsWith("/uploads/") || cover.endsWith(".webp")) {
-            return cover;
-        }
-        return cover.replaceAll("\\.\\w+$", "-thumb.jpg");
     }
 }
