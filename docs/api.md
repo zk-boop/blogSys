@@ -74,14 +74,16 @@
 |---|---|---|
 | POST | `/api/ai/chat` | AI 对话(SSE 流式),body: `{messages: [{role, content}]}`,返回 `text/event-stream` |
 
-SSE 事件类型:
+SSE 事件类型 —— 这张表是**跨语言契约**:服务端的事件名与载荷形状由 `com.blogsys.ai.SseProtocol` 独家拥有(它的单测 `SseProtocolTest` 就是规格),浏览器端的解析器(`frontend/src/api/ai.js`)按同样的名字读。改名字必然是一次显式的、会让两侧测试都红掉的决定。
 
 | event | data | 说明 |
 |---|---|---|
-| `tool` | `{name, args, result}` | 工具调用(前后各发一次,`result` 为空表示开始) |
 | `message` | `{content}` | 回答内容增量,可拼接出完整回复 |
-| `done` | `{}` | 对话结束 |
-| `error` | `{message}` | 出错(如未配置 `AI_API_KEY`) |
+| `tool` | `{name, args, result?}` | 工具调用。**同一个事件名发两次**:第一次无 `result` 表示开始,第二次带 `result` 表示结束 |
+| `error` | `{message}` | 失败。发出后不再有后续事件 |
+| `done` | `{}` | **唯一的正常收尾凭证**。客户端只应在收到它时认为回答完整 —— 流被截断时不会出现 |
+
+`done` 与 `error` 互斥且必居其一:两者都没收到就说明连接被截断,客户端应当如实报错,而不是把半截回答当成完整回答。
 
 Agent 可用工具:`searchArticles(keyword)`、`getArticleDetail(id)`、`getUserProfile(userId)`、`getHotArticles()`、`recommendArticles(articleId)`、`getSiteStats()`。
 

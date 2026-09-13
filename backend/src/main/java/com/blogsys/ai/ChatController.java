@@ -29,6 +29,7 @@ public class ChatController {
     private final ChatService chatService;
     private final Executor chatExecutor;
     private final ViewerSource viewerSource;
+    private final SseProtocol sseProtocol;
 
     @PostMapping(value = "/chat", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public void chat(@Valid @RequestBody ChatRequest request,
@@ -55,7 +56,7 @@ public class ChatController {
         Viewer viewer = viewerSource.current();
         chatExecutor.execute(() -> {
             try {
-                chatService.chat(messages, new SseWriterHttp(servletResponse), viewer);
+                chatService.chat(messages, new SseWriterHttp(servletResponse, sseProtocol), viewer);
             } finally {
                 asyncContext.complete();
             }

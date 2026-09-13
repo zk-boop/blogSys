@@ -5,7 +5,6 @@ import com.blogsys.ai.tool.ToolRegistry;
 import com.blogsys.common.BizException;
 import com.blogsys.visibility.Viewer;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -40,10 +39,12 @@ public class ChatService {
      * 这场对话整个跑在 {@code chatExecutor} 的池线程上 —— 那里没有请求上下文,
      * 所以「谁在问」必须是被接受的依赖,而不是到环境里去猜。它同时决定两件事:
      * 哪些工具出现在发给模型的清单里,以及某次调用是否真的被执行。
+     *
+     * <p>{@code egress} 是<b>行为层</b>的出口:这里只说发生了什么,不说它长什么样。
      */
-    public void chat(List<ChatMessage> incoming, SseWriter writer, Viewer viewer) {
+    public void chat(List<ChatMessage> incoming, ChatEgress egress, Viewer viewer) {
         if (!properties.isEnabled()) {
-            sendError(writer, "AI 服务未配置:请在环境变量中设置 AI_API_KEY(OpenAI 兼容 API Key)");
+            egress.failed("AI 服务未配置:请在环境变量中设置 AI_API_KEY(OpenAI 兼容 API Key)");
             return;
         }
         List<ChatMessage> messages = new ArrayList<>();
@@ -52,29 +53,30 @@ public class ChatService {
         messages.addAll(incoming.subList(start, incoming.size()));
 
         try {
-            boolean hasToolCalls = runToolLoop(messages, writer, viewer);
+            boolean hasToolCalls = runToolLoop(messages, egress, viewer);
             if (hasToolCalls) {
-                sendMessage(writer, "抱歉,处理你的请求时步骤过多,请缩小问题范围后重试。");
+                egress.assistantDelta("抱歉,处理你的请求时步骤过多,请缩小问题范围后重试。");
             }
-            writer.event("done", "{}");
+            egress.ended();
         } catch (BizException e) {
-            sendError(writer, e.getMessage());
+            egress.failed(e.getMessage());
         } catch (Exception e) {
             log.error("AI chat failed", e);
-            sendError(writer, "AI 服务异常,请稍后重试");
+            egress.failed("AI 服务异常,请稍后重试");
         }
     }
 
     /** 流式工具循环:内容增量实时转发;返回是否有未消费的工具调用(轮数耗尽)。 */
-    private boolean runToolLoop(List<ChatMessage> messages, SseWriter writer, Viewer viewer) throws Exception {
+    private boolean runToolLoop(List<ChatMessage> messages, ChatEgress egress, Viewer viewer) throws Exception {
         for (int round = 0; round < MAX_TOOL_ROUNDS; round++) {
             List<ChatMessage.ToolCall>[] toolCalls = new List[1];
             openAiClient.chatStream(messages, toolRegistry.definitions(viewer), new ChatStreamListener() {
                 @Override
                 public void onContent(String delta) {
                     try {
-                        sendMessage(writer, delta);
+                        egress.assistantDelta(delta);
                     } catch (Exception e) {
+                        // 写不出去只有一个合理解释:客户端断了。转成内部信号中断读取。
                         throw new StreamAbortedException(e);
                     }
                 }
@@ -94,14 +96,14 @@ public class ChatService {
             }
             messages.add(ChatMessage.assistant(null, toolCalls[0]));
             for (ChatMessage.ToolCall call : toolCalls[0]) {
-                String result = executeTool(call, writer, viewer);
+                String result = executeTool(call, egress, viewer);
                 messages.add(ChatMessage.toolResult(call.id(), call.functionName(), result));
             }
         }
         return true;
     }
 
-    private String executeTool(ChatMessage.ToolCall call, SseWriter writer, Viewer viewer) throws Exception {
+    private String executeTool(ChatMessage.ToolCall call, ChatEgress egress, Viewer viewer) throws Exception {
         String name = call.functionName();
         AgentTool tool = toolRegistry.get(name);
         // 「不存在」与「对你不存在」必须给出**逐字相同**的答复 —— 两处稍有差别就是一个
@@ -113,7 +115,7 @@ public class ChatService {
             return "{\"error\":\"未知工具: " + name + "\"}";
         }
         Map<String, Object> args = parseArgs(call);
-        sendToolEvent(writer, name, args, null);
+        egress.toolStarted(name, args);
         String result;
         try {
             result = tool.execute(args);
@@ -124,7 +126,7 @@ public class ChatService {
         if (result.length() > TOOL_RESULT_LIMIT) {
             result = result.substring(0, TOOL_RESULT_LIMIT) + "…(已截断)";
         }
-        sendToolEvent(writer, name, args, result);
+        egress.toolFinished(name, args, result);
         return result;
     }
 
@@ -137,32 +139,6 @@ public class ChatService {
             return objectMapper.readValue(arguments, Map.class);
         } catch (Exception e) {
             return Map.of();
-        }
-    }
-
-    private void sendToolEvent(SseWriter writer, String name, Map<String, Object> args, String result) throws Exception {
-        ObjectNode node = objectMapper.createObjectNode();
-        node.put("name", name);
-        node.set("args", objectMapper.valueToTree(args));
-        if (result != null) {
-            node.put("result", result);
-        }
-        writer.event("tool", node.toString());
-    }
-
-    private void sendMessage(SseWriter writer, String content) throws Exception {
-        ObjectNode node = objectMapper.createObjectNode();
-        node.put("content", content);
-        writer.event("message", node.toString());
-    }
-
-    private void sendError(SseWriter writer, String message) {
-        try {
-            ObjectNode node = objectMapper.createObjectNode();
-            node.put("message", message);
-            writer.event("error", node.toString());
-        } catch (Exception ignored) {
-            // 客户端已断开
         }
     }
 

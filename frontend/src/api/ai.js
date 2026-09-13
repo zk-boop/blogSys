@@ -1,11 +1,15 @@
 import { session } from '../session-instance'
+import { createSseReader } from './aiEvents'
 
 const API_BASE = '/api'
 
 /**
  * AI 对话(SSE 流式,需 fetch 直读流,无法走 axios)。
- * 事件:tool(工具调用)、message(content 增量)、done、error。
- * 返回 AbortController,可调用 abort() 停止。
+ *
+ * <p>事件名与载荷形状的契约见 `docs/api.md`(服务端那边的唯一归属是 `SseProtocol`);
+ * 线格式的解析归 `./aiEvents`,这里只剩「发请求、读字节、把文本喂进去」。
+ *
+ * <p>返回 AbortController,可调用 abort() 停止。
  */
 export function aiChatStream(messages, { onTool, onMessage, onDone, onError }) {
   const controller = new AbortController()
@@ -27,28 +31,20 @@ export function aiChatStream(messages, { onTool, onMessage, onDone, onError }) {
         onError?.('AI 服务错误,请稍后重试')
         return
       }
+
       const reader = res.body.getReader()
       const decoder = new TextDecoder('utf-8')
-      let buffer = ''
-      let event = ''
+      const sse = createSseReader({ onTool, onMessage, onDone, onError })
       while (true) {
         const { done, value } = await reader.read()
         if (done) break
-        buffer += decoder.decode(value, { stream: true })
-        const lines = buffer.split('\n')
-        buffer = lines.pop() || ''
-        for (const line of lines) {
-          if (line.startsWith('event:')) {
-            event = line.slice(6).trim()
-          } else if (line.startsWith('data:')) {
-            dispatch(event, line.slice(5).trim(), { onTool, onMessage, onDone, onError })
-          }
-        }
+        sse.push(decoder.decode(value, { stream: true }))
       }
-      if (buffer.startsWith('data:')) {
-        dispatch(event, buffer.slice(5).trim(), { onTool, onMessage, onDone, onError })
+      // 只有收到 `done` 才算回答完整。两者都没有读到流末尾 = 连接被截断,
+      // 必须如实报错,而不是把半截回答当成完整回答。
+      if (sse.finish() === 'truncated') {
+        onError?.('连接中断,请重试')
       }
-      onDone?.()
     } catch (err) {
       if (err.name === 'AbortError') return
       onError?.(err.message || '网络错误')
@@ -56,21 +52,4 @@ export function aiChatStream(messages, { onTool, onMessage, onDone, onError }) {
   })()
 
   return controller
-}
-
-function dispatch(event, data, handlers) {
-  if (!data) return
-  let payload
-  try {
-    payload = JSON.parse(data)
-  } catch {
-    return
-  }
-  if (event === 'tool' && payload.name) {
-    handlers.onTool?.(payload)
-  } else if (event === 'message' && payload.content) {
-    handlers.onMessage?.(payload.content)
-  } else if (event === 'error' && payload.message) {
-    handlers.onError?.(payload.message)
-  }
 }

@@ -18,6 +18,7 @@ import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
@@ -28,6 +29,13 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+/**
+ * {@code ChatService} 的测试面。
+ *
+ * <p><b>断言的是行为,不是 JSON。</b>seam 升到行为层之前,这里的 adapter 得把自己刚
+ * 序列化出去的 JSON 再解析回来才能问「回答是什么」—— 于是测试同时验证了 ChatService
+ * 与一份线格式的副本,而那份副本在别处还有三份。
+ */
 @ExtendWith(MockitoExtension.class)
 class ChatServiceTest {
 
@@ -68,40 +76,47 @@ class ChatServiceTest {
     private final List<java.util.function.Consumer<ChatStreamListener>> behaviors = new ArrayList<>();
     private int behaviorIndex;
 
-    private SseWriter writer() {
-        return new CapturingWriter();
+    private Recorder recorder() {
+        return new Recorder();
     }
 
-    private String joinedEvents(SseWriter writer) {
-        return String.join(" ", ((CapturingWriter) writer).events.stream()
-                .map(ev -> ev.name + ":" + ev.data).toList());
-    }
+    /**
+     * 行为层的测试 adapter:只记下「发生了什么」。
+     *
+     * <p>它不知道事件名、不知道载荷形状、也不组帧 —— 那些归 {@link SseProtocol},
+     * 由 {@code SseProtocolTest} 负责。这里记录的三样东西就是 ChatService 真正说的话。
+     */
+    static class Recorder implements ChatEgress {
 
-    /** 拼接所有 message 事件的分块内容,用于断言最终完整回答。 */
-    private String fullContent(SseWriter writer) {
-        StringBuilder sb = new StringBuilder();
-        for (CapturingWriter.Event ev : ((CapturingWriter) writer).events) {
-            if ("message".equals(ev.name)) {
-                try {
-                    sb.append(objectMapper.readTree(ev.data).path("content").asText(""));
-                } catch (Exception ignored) {
-                    // 忽略无法解析的事件
-                }
-            }
-        }
-        return sb.toString();
-    }
-
-    static class CapturingWriter implements SseWriter {
-
-        final List<Event> events = new ArrayList<>();
+        final List<String> events = new ArrayList<>();
+        final StringBuilder answer = new StringBuilder();
+        String failure;
 
         @Override
-        public void event(String name, String dataJson) {
-            events.add(new Event(name, dataJson));
+        public void assistantDelta(String delta) {
+            events.add("delta");
+            answer.append(delta);
         }
 
-        record Event(String name, String data) {
+        @Override
+        public void toolStarted(String name, Map<String, Object> args) {
+            events.add("toolStarted:" + name);
+        }
+
+        @Override
+        public void toolFinished(String name, Map<String, Object> args, String result) {
+            events.add("toolFinished:" + name);
+        }
+
+        @Override
+        public void failed(String message) {
+            events.add("failed");
+            failure = message;
+        }
+
+        @Override
+        public void ended() {
+            events.add("ended");
         }
     }
 
@@ -123,14 +138,14 @@ class ChatServiceTest {
     }
 
     @Test
-    void chat_shouldSendErrorEvent_whenApiKeyMissing() {
+    void chat_shouldReportFailure_whenApiKeyMissing() {
         properties.setApiKey("");
-        SseWriter writer = writer();
+        Recorder recorder = recorder();
 
-        chatService.chat(List.of(ChatMessage.user("你好")), writer, VIEWER);
+        chatService.chat(List.of(ChatMessage.user("你好")), recorder, VIEWER);
 
-        String joined = joinedEvents(writer);
-        assertTrue(joined.contains("AI 服务未配置"));
+        assertTrue(recorder.failure.contains("AI 服务未配置"), "实际: " + recorder.failure);
+        assertTrue(recorder.events.contains("failed"));
         verify(openAiClient, never()).chatStream(any(), anyList(), any());
     }
 
@@ -138,12 +153,12 @@ class ChatServiceTest {
     void chat_shouldStreamAnswerDirectly_whenNoToolCall() {
         streamAnswer("你好!我是博客助手。");
 
-        SseWriter writer = writer();
-        chatService.chat(List.of(ChatMessage.user("你是谁")), writer, VIEWER);
+        Recorder recorder = recorder();
+        chatService.chat(List.of(ChatMessage.user("你是谁")), recorder, VIEWER);
 
-        String joined = joinedEvents(writer);
-        assertTrue(fullContent(writer).contains("你好!我是博客助手。"));
-        assertTrue(joined.contains("done"));
+        assertEquals("你好!我是博客助手。", recorder.answer.toString());
+        assertTrue(recorder.events.contains("ended"), "正常走完必须发 ended");
+        assertNull(recorder.failure);
         verify(tool, never()).execute(any());
     }
 
@@ -153,13 +168,12 @@ class ChatServiceTest {
         streamAnswer("热门文章有 5 篇。");
         when(tool.execute(any())).thenReturn("{\"count\":5}");
 
-        SseWriter writer = writer();
-        chatService.chat(List.of(ChatMessage.user("有哪些热门文章")), writer, VIEWER);
+        Recorder recorder = recorder();
+        chatService.chat(List.of(ChatMessage.user("有哪些热门文章")), recorder, VIEWER);
 
-        String joined = joinedEvents(writer);
-        assertTrue(joined.contains("tool:"));
-        assertTrue(fullContent(writer).contains("热门文章有 5 篇。"));
-        assertTrue(joined.contains("done"));
+        assertEquals(List.of("toolStarted:getHotArticles", "toolFinished:getHotArticles", "delta", "ended"),
+                recorder.events, "工具调用的开始与结束各说一次,然后才是回答");
+        assertEquals("热门文章有 5 篇。", recorder.answer.toString());
         verify(tool).execute(any());
         verify(openAiClient, times(2)).chatStream(any(), anyList(), any());
     }
@@ -170,12 +184,14 @@ class ChatServiceTest {
         streamAnswer("抱歉,暂时查不到。");
         when(tool.execute(any())).thenThrow(new BizException("模拟失败"));
 
-        SseWriter writer = writer();
-        chatService.chat(List.of(ChatMessage.user("查热门")), writer, VIEWER);
+        Recorder recorder = recorder();
+        chatService.chat(List.of(ChatMessage.user("查热门")), recorder, VIEWER);
 
-        String joined = joinedEvents(writer);
-        assertTrue(joined.contains("模拟失败"));
-        assertTrue(fullContent(writer).contains("抱歉,暂时查不到。"));
+        // 工具失败要如实告诉模型,由模型决定怎么对用户说 —— 所以是 toolFinished 而不是 failed
+        assertEquals(List.of("toolStarted:getHotArticles", "toolFinished:getHotArticles", "delta", "ended"),
+                recorder.events);
+        assertTrue(recorder.answer.toString().contains("抱歉,暂时查不到。"));
+        assertNull(recorder.failure);
         verify(openAiClient, times(2)).chatStream(any(), anyList(), any());
     }
 
@@ -186,12 +202,11 @@ class ChatServiceTest {
         }
         when(tool.execute(any())).thenReturn("{}");
 
-        SseWriter writer = writer();
-        chatService.chat(List.of(ChatMessage.user("一直调用工具")), writer, VIEWER);
+        Recorder recorder = recorder();
+        chatService.chat(List.of(ChatMessage.user("一直调用工具")), recorder, VIEWER);
 
-        String joined = joinedEvents(writer);
-        assertTrue(fullContent(writer).contains("步骤过多"));
-        assertTrue(joined.contains("done"));
+        assertTrue(recorder.answer.toString().contains("步骤过多"), "实际: " + recorder.answer);
+        assertTrue(recorder.events.contains("ended"));
         verify(openAiClient, times(4)).chatStream(any(), anyList(), any());
         verify(tool, times(4)).execute(any());
     }
@@ -201,14 +216,15 @@ class ChatServiceTest {
         streamToolCalls(List.of(toolCall("call-1", "noSuchTool", "{}")));
         streamAnswer("已收到。");
 
-        SseWriter writer = writer();
-        chatService.chat(List.of(ChatMessage.user("调工具")), writer, VIEWER);
+        Recorder recorder = recorder();
+        chatService.chat(List.of(ChatMessage.user("调工具")), recorder, VIEWER);
 
+        assertEquals(List.of("delta", "ended"), recorder.events,
+                "未知工具不该产生任何工具事件 —— 模型只看到一条 toolResult");
         @SuppressWarnings("unchecked")
         ArgumentCaptor<List<ChatMessage>> captor = ArgumentCaptor.forClass(List.class);
         verify(openAiClient, times(2)).chatStream(captor.capture(), anyList(), any());
-        String secondCall = captor.getAllValues().get(1).toString();
-        assertTrue(secondCall.contains("未知工具"));
+        assertTrue(captor.getAllValues().get(1).toString().contains("未知工具"));
         verify(tool, never()).execute(any());
     }
 
@@ -220,10 +236,9 @@ class ChatServiceTest {
         when(tool.isAvailableTo(any())).thenReturn(false);
         streamAnswer("好的。");
 
-        chatService.chat(List.of(ChatMessage.user("全站有多少文章")), writer(), VIEWER);
+        chatService.chat(List.of(ChatMessage.user("全站有多少文章")), recorder(), VIEWER);
 
-        assertTrue(offeredTools().isEmpty(),
-                "对提问者不可用的工具不该出现在 tools 列表里");
+        assertTrue(offeredTools().isEmpty(), "对提问者不可用的工具不该出现在 tools 列表里");
     }
 
     @Test
@@ -231,7 +246,7 @@ class ChatServiceTest {
     void chat_shouldOfferTheTool_whenViewerIsAdmin() {
         streamAnswer("好的。");
 
-        chatService.chat(List.of(ChatMessage.user("全站有多少文章")), writer(), Viewer.of(1L, true));
+        chatService.chat(List.of(ChatMessage.user("全站有多少文章")), recorder(), Viewer.of(1L, true));
 
         assertEquals(List.of("getHotArticles"),
                 offeredTools().stream().map(d -> d.function().name()).toList());
@@ -246,9 +261,10 @@ class ChatServiceTest {
         streamToolCalls(List.of(toolCall("call-1", "getHotArticles", "{}")));
         streamAnswer("已收到。");
 
-        SseWriter writer = writer();
-        chatService.chat(List.of(ChatMessage.user("调工具")), writer, VIEWER);
+        Recorder recorder = recorder();
+        chatService.chat(List.of(ChatMessage.user("调工具")), recorder, VIEWER);
 
+        assertEquals(List.of("delta", "ended"), recorder.events, "不可用的工具不该被执行");
         @SuppressWarnings("unchecked")
         ArgumentCaptor<List<ChatMessage>> captor = ArgumentCaptor.forClass(List.class);
         verify(openAiClient, times(2)).chatStream(captor.capture(), anyList(), any());
