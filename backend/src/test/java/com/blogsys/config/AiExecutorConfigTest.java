@@ -4,22 +4,27 @@ import com.blogsys.security.LoginUser;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.junit.jupiter.api.Assertions.fail;
 
 /**
  * AI 会话跑在 {@code chatExecutor} 的线程池上,而 {@code JwtAuthFilter} 只把 principal
@@ -112,28 +117,89 @@ class AiExecutorConfigTest {
     @Test
     @DisplayName("跑完不留身份:池线程会被复用,上一个人的身份绝不能留给下一个人")
     void poolThread_shouldNotKeepTheIdentity_afterTheTask() throws Exception {
-        Executor executor = new AiExecutorConfig().chatExecutor();
-        authenticate(7L, "USER");
-        AtomicReference<Thread> first = new AtomicReference<>();
-        onPoolThread(executor, () -> {
-            first.set(Thread.currentThread());
-            return null;
-        });
-        SecurityContextHolder.clearContext();
-
-        // 池里只有两个 worker,且都在跑;后续任务必然被它们接手 —— 直到命中同一个线程为止。
-        // 命中是断言的前提,所以要显式要求它发生,而不是碰运气通过。
-        for (int attempt = 0; attempt < 20; attempt++) {
-            AtomicReference<Thread> thread = new AtomicReference<>();
-            Object authentication = onPoolThread(executor, () -> {
-                thread.set(Thread.currentThread());
-                return SecurityContextHolder.getContext().getAuthentication();
-            });
-            if (thread.get() == first.get()) {
-                assertNull(authentication, "复用的池线程上还留着上一个人的身份");
-                return;
+        ThreadPoolTaskExecutor executor = (ThreadPoolTaskExecutor) new AiExecutorConfig().chatExecutor();
+        CountDownLatch release = new CountDownLatch(1);
+        try {
+            // 先把 4 个 worker 全部占住 —— 它们在**提交那一刻**各自捕获了 7 号的身份,
+            // 于是「跑过带身份任务的线程」是确定的 4 个,而不是靠反复提交去撞其中一个。
+            authenticate(7L, "USER");
+            CountDownLatch occupied = new CountDownLatch(4);
+            for (int i = 0; i < 4; i++) {
+                executor.execute(() -> {
+                    occupied.countDown();
+                    awaitQuietly(release);
+                });
             }
+            assertTrue(occupied.await(5, TimeUnit.SECONDS), "4 个 worker 没都跑起来");
+
+            // 探针在上下文已清空时提交 ⇒ 不带身份;池已满,它们只会被上面那 4 个线程接手
+            // (队列非空时 ThreadPoolExecutor 不会再开新线程),所以每一条断言都落在
+            // 「刚刚跑过带身份任务的线程」上。
+            SecurityContextHolder.clearContext();
+            List<Object> seen = Collections.synchronizedList(new ArrayList<>());
+            CountDownLatch probed = new CountDownLatch(4);
+            for (int i = 0; i < 4; i++) {
+                executor.execute(() -> {
+                    try {
+                        seen.add(SecurityContextHolder.getContext().getAuthentication());
+                    } finally {
+                        probed.countDown();
+                    }
+                });
+            }
+            release.countDown();
+
+            assertTrue(probed.await(5, TimeUnit.SECONDS), "探针任务没有跑完");
+            assertEquals(4, seen.size());
+            for (Object authentication : seen) {
+                assertNull(authentication, "复用的池线程上还留着上一个人的身份");
+            }
+        } finally {
+            release.countDown();
+            executor.shutdown();
         }
-        fail("20 次都没落到同一个池线程上 —— 这条断言失去了分辨力,请修好它而不是删掉它");
+    }
+
+    @Test
+    @DisplayName("说 4 路并发就是 4 路 —— 不是「core 2,另外 20 个静静排队」")
+    void chatPool_shouldRunFourConversationsAtOnce() throws Exception {
+        ThreadPoolTaskExecutor executor = (ThreadPoolTaskExecutor) new AiExecutorConfig().chatExecutor();
+        CountDownLatch running = new CountDownLatch(4);
+        CountDownLatch release = new CountDownLatch(1);
+        AtomicBoolean queued = new AtomicBoolean(false);
+        try {
+            for (int i = 0; i < 4; i++) {
+                executor.execute(() -> {
+                    running.countDown();
+                    awaitQuietly(release);
+                });
+            }
+            assertTrue(running.await(5, TimeUnit.SECONDS),
+                    "只有不到 4 场对话同时跑起来 —— 旧配置(core 2 / queue 20)正是这样:"
+                            + "配置写着 4,实际稳态并发是 2");
+
+            executor.execute(() -> queued.set(true));
+            Thread.sleep(300);
+            assertFalse(queued.get(), "第 5 场该在排队,而不是插进来");
+
+            release.countDown();
+            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+            while (!queued.get() && System.nanoTime() < deadline) {
+                Thread.sleep(20);
+            }
+            assertTrue(queued.get(), "放行之后排队的那一场该跑起来");
+        } finally {
+            release.countDown();
+            executor.shutdown();
+        }
+    }
+
+    /** 等一个闩,被中断时如实把中断标记放回去 —— 测试里不需要更复杂的处理。 */
+    private static void awaitQuietly(CountDownLatch latch) {
+        try {
+            latch.await();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
     }
 }

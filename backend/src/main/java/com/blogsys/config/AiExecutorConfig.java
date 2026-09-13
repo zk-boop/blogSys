@@ -27,12 +27,28 @@ import java.util.concurrent.Executor;
 @Configuration
 public class AiExecutorConfig {
 
+    /**
+     * 同时进行的对话数。
+     *
+     * <p>{@code corePoolSize} 就是它 —— {@code ThreadPoolExecutor} 只在**队列满之后**才
+     * 扩容到 {@code maxPoolSize},所以「core 2 / max 4 / queue 20」的实际含义是
+     * **稳态并发 2**,另外 20 个静静地排队,而 {@code maxPoolSize=4} 几乎永远用不到:
+     * 一个写着 4、跑着 2 的配置,读的人会照它做容量判断。
+     *
+     * <p>现在 4 就是 4。一次对话几乎全程在等模型(IO),4 个线程很便宜;
+     * 超出的部分排队,排满 16 个就明确拒绝(见 {@code ChatController} 的收尾路径)。
+     */
+    private static final int CONCURRENT_CHATS = 4;
+
+    /** 排队上限。4 + 16 = 同时在飞 20 场对话,与这个池此前的总容量一致。 */
+    private static final int WAITING_CHATS = 16;
+
     @Bean("chatExecutor")
     public Executor chatExecutor() {
         ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
-        executor.setCorePoolSize(2);
-        executor.setMaxPoolSize(4);
-        executor.setQueueCapacity(20);
+        executor.setCorePoolSize(CONCURRENT_CHATS);
+        executor.setMaxPoolSize(CONCURRENT_CHATS);
+        executor.setQueueCapacity(WAITING_CHATS);
         executor.setThreadNamePrefix("ai-chat-");
         executor.setTaskDecorator(task ->
                 new DelegatingSecurityContextRunnable(task, SecurityContextHolder.getContext()));
