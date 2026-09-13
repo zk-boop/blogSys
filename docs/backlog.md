@@ -70,7 +70,19 @@
 | 对外行为变更 | 非管理员的 AI 工具清单里不再有 `getSiteStats`;AI 查详情不再改变浏览量。HTTP 路径行为未变 |
 | 测试 | 94 → 111(新增真实线程池的身份传播测试、含对照;用真实 `SiteStatsTool` 钉受众;`InOrder` 钉「先记录浏览再读详情」) |
 
-## v5 候选(来自 2026-09-13 架构评审,8 个候选里已完成 2 个)
+## v5 已完成:router outlet 的 route identity(候选 03)
+
+详见 `docs/architecture.md` §12。
+
+| 项 | 说明 |
+|---|---|
+| 机制 | 标识算在 `frontend/src/router/identity.js` 的纯函数里:该 outlet 自己那一层的记录 + params + query。父布局不因子记录变化而重挂载 |
+| 修掉 | D7 URL 变了正文不变 · `Home.vue` 的补偿 watcher 删掉 · `Write.vue` 的 `onMounted` 注册两次(载入发两次请求) |
+| 顺带修 | **编辑页打开且停留 20 秒会把已发布文章静默改成草稿**(载入即判脏 + 自动保存固定存草稿)。数据完整性缺陷,非评审报告所列 |
+| 前端测试 | 从零到有:`npm test` = `node --test`,**零新增依赖**;10 个用例钉住重挂载边界 |
+| 对外行为变更 | 搜索时首页会重挂载,因而会重取 `/api/tags` 与 `/api/articles/hot` |
+
+## v5 候选(来自 2026-09-13 架构评审,8 个候选里已完成 3 个)
 
 完整论证与前后对照图见 `docs/architecture-review-2026-09-13.html`(HTML,含 Mermaid 图)。
 以下是一行摘要,防止那份快照丢失时工作项也一起丢:
@@ -79,7 +91,7 @@
 |---|---|---|---|
 | 01 | ~~内容可见性收敛成一个 module~~ | Strong | **已完成**,见 `architecture.md` §10 |
 | 02 | ~~让「谁在问、只读」穿过异步 seam~~ | Strong | **已完成**,见 `architecture.md` §11。AI 会话曾跑在没有 principal 的线程池上,导致 ADMIN 专属统计可被任意登录用户读到(D1,已实测),且「只读」承诺被 `incrViewCount` 违反(D2,已实测) |
-| 03 | 给 router outlet 加 route identity | Strong | outlet 无 `:key`,`/article/A → /article/B` 复用实例 → URL 变了正文不变;`Write.vue` 因此 `onMounted` 注册两次 |
+| 03 | ~~给 router outlet 加 route identity~~ | Strong | **已完成**,见 `architecture.md` §12。outlet 无 `:key`,`/article/A → /article/B` 复用实例 → URL 变了正文不变 |
 | 04 | 6 个 view 各自手搓的分页切片收成一个 deep module | Strong | 状态五元组 ×6、reload 函数体 ×7、分页块逐字相同 ×6;15 个 view 里只有 1 个 `catch`,「请求失败」当前不可表达 |
 | 05 | 让 session 只有一个归属 | Strong | 「带 token + 401 登出跳转」有 3 份实现 + 4 处 view 复制,7 处可重定向;`loginRequired()` 是死代码 |
 | 06 | 把上游解帧搬出传输层 | Strong | 唯一解帧的代码是私有内部类,只能靠真实网络触达 → D8(错误帧被静默丢弃)与 D9(零参数工具调用可能被丢掉)长在无测试面的地方 |

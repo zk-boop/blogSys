@@ -494,4 +494,96 @@ AI 子系统在 `docs/api.md` 只有 6 行；而 `docs/lessons.md` 全文 63 行
 - **DB 层测试仍缺。** §10.6 说那需要一次显式的依赖决策，本次把依赖事实查清了，因而**明确不做**：Docker 守护进程未运行（`docker version`/`info`/`ps` 全部 exit 1），Testcontainers 现在跑不了；H2 本机只有 2.1.214 / 2.2.224 / 2.4.240，而 Boot 3.4.1 的 BOM 钉的是**不在本机**的 2.3.232（不写 `<version>` 就离线失败）；`docs/schema.sql` 对 H2 `MODE=MySQL` 还有 3 处确认的硬阻塞（`CREATE DATABASE`、库级 `DEFAULT CHARACTER SET`、内联 `ON UPDATE CURRENT_TIMESTAMP` ×2）。
 - **AI 内核的取消与生命周期（§5.5）未动。**
 
+---
+
+## 12. Router outlet 的 route identity：结果（2026-09-13）
+
+候选 03。§6 的 D7 已修：URL 变了正文不变。同时修掉一处做核对时踩出来的编辑页缺陷。
+
+### 12.1 标识算在一个纯函数里
+
+`App.vue` 的 `<component :is>` 原本没有 `:key`，于是**同一个 route record** 下只有 params 变化时
+（`/article/3` → `/article/7`）Vue 复用同一个实例 —— 在意的 view 只能各自发明 watcher 去补偿，
+而全库只有 `Home.vue` 补了，其余 view 各假定了一次「不会变」。
+
+现在标识由 `frontend/src/router/identity.js` 的 `outletKey(route, depth)` 算，规则是
+**该 outlet 自己那一层的记录** + 它消费的 params + query：
+
+| 变化 | 顶层 outlet 的标识 | 效果 |
+|---|---|---|
+| `/article/3` → `/article/7` | 变 | 重挂载 —— 这是 D7 |
+| `/` → `/?keyword=x` | 变 | 重挂载 —— 于是 `Home.vue` 的补偿 watcher 删掉了 |
+| `/admin/users` → `/admin/articles` | **不变** | 父布局**不**重挂载；子 outlet（depth=1）的标识变，叶子照换 |
+
+第三条是有意的：若按整条 URL 算，每切一个后台标签页都会连带重播一次过渡动画。
+params 也只取「这个记录自己声明的」，子记录的 params 变化不该把父布局一起换掉。
+
+**已知代价**：query 一律参与标识，所以搜索时 `Home.vue` 重挂载，会连带重取 `/api/tags`
+与 `/api/articles/hot`（实测可见）。今天没有第二个记录用 query，所以记录在案而不为它加
+配置开关 —— 身份必须只有一个主人。
+
+### 12.2 前端第一次有了可反复运行的测试
+
+前端此前**零测试基础设施**（只有 `dev`/`build`/`preview`）。现在 `npm test` = `node --test`，
+**零新增依赖**（Node 22 自带测试运行器与 ESM 支持）。
+
+这不是权益之计而是设计要求：`outletKey` 之所以能用 `node --test` 直接测，正因为它是
+一个不依赖 Vue 的纯函数。凡是需要挂载 SFC 才能测的逻辑，本身就说明它没被抽出来。
+
+10 个用例钉住的是上面那张表的每一行，尤其是「哪些变化**不该**重挂载」这条边界。
+
+### 12.3 一次差点蒙混过关的核对
+
+D7 是运行时行为，纯函数测试只能证明规则、不能证明「正文真的换了」，所以用系统 Chrome +
+CDP 做了一次真浏览器核对。第一版核对**全绿**，但它是假的：
+
+- 驱动方式是用 JS 动态创建一个 `<a>` 再 `.click()`。**vue-router 4 的点击拦截在 `RouterLink`
+  内部，不是全局 document 监听** —— 那个点击触发了整页刷新，新文档当然是新内容。
+- 更早一次「对照」（故意去掉 `:key` 再看是否失败）也因此全绿，我却先怀疑是缓存问题，
+  用 `grep outletKey` 去验证改动是否生效 —— 而那个 `outletKey` 命中的是**遗留的 import 行**，
+  不是模板里的 key 绑定。两步都错，方向都指向「结论已经对了」。
+
+修好之后，核对里加了一条：**导航前往 `window` 上打个标记，导航后检查它还在不在**。
+标记消失就是整页刷新，这条核对直接判为无效。改用
+`app.config.globalProperties.$router.push` 驱动真正的客户端导航。
+
+于是对照才显出分辨力：
+
+| | 无 `:key` | 带 `:key` |
+|---|---|---|
+| `/article/3` → `/article/7` | URL 变了、标题仍是文章 3 的、**0 个请求** | 标题变「嵌套验证」、3 个请求 |
+| `/?keyword=` 变化 | 搜索条不动、**0 个请求** | 跟着变、3 个请求 |
+
+教训已记进 `docs/lessons.md`：**「通过了」不等于「测到了」**。
+
+### 12.4 核对时踩出来的一处缺陷：编辑页会自己改数据
+
+探针打开过 `/write/7`（一篇**已发布**文章）并让标签页留着，26 秒后文章 7 从「已发布」
+变成了**草稿**，`updated_at` 被改。数据已复原。追下去是两个缺陷叠加：
+
+1. `loadArticle` 先给表单字段赋值、之后才把 `loaded` 置 true。那个深度 watcher 在同步块
+   结束后 flush 时 `loaded` 已是 true，于是把 `dirty` 判成 true —— **「打开编辑页、
+   什么都不碰」也会触发自动保存**。
+2. 自动保存是 `save(true, true)`，固定以 `draft: true` 保存。`originalStatus` 在载入时读
+   了出来，却**从未被使用**。
+
+合并后果：打开一篇已发布文章的编辑页停留 20 秒，那篇文章就被静默下架。
+
+现在：载入时先 `await nextTick()` 再打开 `loaded`；自动保存单独实现，按文章原本的状态
+保存且不跳转；新文章仍以草稿落库（用户没点发布，不该替他发布）。注意后端的 `draft` 是
+`Boolean` 且 `null/false` 都表示发布（`ArticleService.resolveStatus`），所以必须**显式**
+传状态，不能靠省略字段。
+
+核对（26 秒窗口，直接读库）：打开编辑页什么都不碰 ⇒ `status` 与 `updated_at` 一字未动；
+改一下摘要 ⇒ 自动保存确实落库，而 `status` 仍是 1。
+
+### 12.5 仍未覆盖的
+
+- **SFC 层没有自动化测试。** `outletKey` 的规则有单测，但「模板确实用了它」「6 个 view
+  确实改用了新模块」这类接线只能靠 `npm run build` + 浏览器一次性核对。要让它们可反复
+  运行需要引入 vitest + @vue/test-utils —— 一次显式的依赖决策，本轮没做。
+- 12.3 里那两个一次性浏览器核对脚本没有进仓库（依赖系统 Chrome 路径与整套本地服务），
+  只在本文与提交说明里记录了过程。**这是本仓库沿用的一次性核对模式，代价是它不能重跑。**
+
+
 
