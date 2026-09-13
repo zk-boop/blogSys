@@ -10,6 +10,7 @@ import com.blogsys.entity.User;
 import com.blogsys.mapper.ArticleMapper;
 import com.blogsys.mapper.ArticleTagMapper;
 import com.blogsys.mapper.TagMapper;
+import com.blogsys.visibility.Visibility;
 import com.blogsys.vo.ArticleListItemVO;
 import com.blogsys.vo.UserBriefVO;
 import lombok.RequiredArgsConstructor;
@@ -45,33 +46,30 @@ public class RecommendService {
     private final ArticleTagMapper articleTagMapper;
     private final TagMapper tagMapper;
     private final UserService userService;
+    private final Visibility visibility;
 
     public List<ArticleListItemVO> recommend(Long articleId, int size) {
-        Article target = articleMapper.selectById(articleId);
-        if (target == null || target.getStatus() != ArticleStatus.PUBLISHED.getValue()) {
-            throw new BizException(404, "文章不存在");
-        }
+        // 靶子文章同样穿过可见性。迁移前这里只查了 status、没查作者是否被封禁,
+        // 而同一个函数的候选过滤却查了 —— 一个函数对自己用的规则自相矛盾。
+        // 又因为本接口是 permitAll,任何人拿着 id 就能确认被封禁作者的文章存在。
+        Article target = visibility.articles().require(articleId).article();
         Set<String> targetTags = tagsOf(Set.of(target.getId())).getOrDefault(articleId, Set.of());
         Set<String> targetKeywords = keywords(target.getTitle(), target.getSummary(), target.getContent());
 
-        List<Article> candidates = articleMapper.selectList(
-                Wrappers.<Article>lambdaQuery()
-                        .eq(Article::getStatus, ArticleStatus.PUBLISHED.getValue())
-                        .ne(Article::getUserId, target.getUserId())
-                        .orderByDesc(Article::getCreatedAt)
-                        .last("LIMIT " + CANDIDATE_LIMIT));
+        // 封禁过滤现在发生在 SQL 里、LIMIT 之前;迁移前是先取 100 行再在内存里剔,
+        // 于是候选集会被封禁作者的文章占掉一部分。候选因此比过去更实。
+        List<Article> candidates = visibility.articles()
+                .where(w -> w.ne(Article::getUserId, target.getUserId()))
+                .orderByDesc(Article::getCreatedAt)
+                .list(CANDIDATE_LIMIT);
         if (candidates.isEmpty()) {
             return List.of();
         }
-        Set<Long> bannedIds = bannedUserIdsOf(candidates);
         Map<Long, Set<String>> tagsByArticle = tagsOf(
                 candidates.stream().map(Article::getId).collect(Collectors.toSet()));
 
         List<ArticleListItemVO> result = new ArrayList<>();
         for (Article candidate : candidates) {
-            if (bannedIds.contains(candidate.getUserId())) {
-                continue;
-            }
             Set<String> tags = tagsByArticle.getOrDefault(candidate.getId(), Set.of());
             Set<String> kw = keywords(candidate.getTitle(), candidate.getSummary(), candidate.getContent());
             double score = score(targetTags, targetKeywords, tags, kw);
@@ -110,14 +108,6 @@ public class RecommendService {
         }
         vo.setTags(new ArrayList<>(tags));
         return vo;
-    }
-
-    private Set<Long> bannedUserIdsOf(List<Article> articles) {
-        List<Long> userIds = articles.stream().map(Article::getUserId).distinct().toList();
-        return userService.findByIds(userIds).values().stream()
-                .filter(user -> Integer.valueOf(1).equals(user.getStatus()))
-                .map(User::getId)
-                .collect(Collectors.toSet());
     }
 
     private Map<Long, Set<String>> tagsOf(Set<Long> articleIds) {
