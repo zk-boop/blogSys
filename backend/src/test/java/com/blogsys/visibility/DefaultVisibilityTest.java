@@ -131,6 +131,41 @@ class DefaultVisibilityTest {
     }
 
     @Test
+    @DisplayName("作者可见性:不存在与不可见是同一个答案")
+    void canSeeAuthor_shouldBeFalse_forNull() {
+        assertFalse(visibilityFor(Viewer.anonymous()).canSeeAuthor(null));
+        assertFalse(visibilityFor(Viewer.of(3L, true)).canSeeAuthor(null),
+                "管理员也看不到一个不存在的用户");
+    }
+
+    @Test
+    void canSeeAuthor_shouldFollowTheBanRule() {
+        assertTrue(visibilityFor(Viewer.anonymous()).canSeeAuthor(user(0)));
+        assertFalse(visibilityFor(Viewer.anonymous()).canSeeAuthor(user(1)));
+    }
+
+    @Test
+    @DisplayName("作者可见性:管理员豁免 —— 这正是「能打开文章却打不开主页」那处不一致的修法")
+    void canSeeAuthor_shouldExemptAdmins() {
+        assertTrue(visibilityFor(Viewer.of(3L, true)).canSeeAuthor(user(1)),
+                "管理员应当看得见被封禁用户的主页");
+    }
+
+    @Test
+    @DisplayName("作者可见性:未定义的状态值 fail closed")
+    void canSeeAuthor_shouldFailClosed_onUnknownStatus() {
+        assertFalse(visibilityFor(Viewer.anonymous()).canSeeAuthor(user(2)));
+        assertFalse(visibilityFor(Viewer.anonymous()).canSeeAuthor(user(null)));
+    }
+
+    private static User user(Integer status) {
+        User user = new User();
+        user.setId(6L);
+        user.setStatus(status);
+        return user;
+    }
+
+    @Test
     @DisplayName("第三张表:非管理员用相关 EXISTS,列名是约定的 article_id,值全部走绑定")
     @SuppressWarnings({"rawtypes", "unchecked"})
     void restrictToVisibleArticles_shouldUseExistsWithBoundValues() {

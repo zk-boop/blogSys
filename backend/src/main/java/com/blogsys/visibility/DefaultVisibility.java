@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.blogsys.common.ArticleStatus;
 import com.blogsys.common.UserStatus;
 import com.blogsys.entity.Comment;
+import com.blogsys.entity.User;
 import com.blogsys.mapper.ArticleMapper;
 import com.blogsys.mapper.CommentMapper;
 import org.springframework.stereotype.Service;
@@ -52,6 +53,17 @@ public class DefaultVisibility implements Visibility {
                     UserStatus.ACTIVE.getValue());
         }
         return commentMapper.selectList(wrapper);
+    }
+
+    @Override
+    public boolean canSeeAuthor(User user) {
+        if (user == null) {
+            return false;
+        }
+        if (viewerSource.current().isAdmin()) {
+            return true;
+        }
+        return !UserStatus.of(user.getStatus()).isBanned();
     }
 
     /**

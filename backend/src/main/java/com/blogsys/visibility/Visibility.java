@@ -2,6 +2,7 @@ package com.blogsys.visibility;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.blogsys.entity.Comment;
+import com.blogsys.entity.User;
 
 import java.util.List;
 
@@ -35,6 +36,16 @@ public interface Visibility {
      * 评论没有独立的状态字段 —— 它可见 ⟺ 所属文章可见 ∧ 评论作者未被封禁。
      */
     List<Comment> commentsOf(VisibleArticle article);
+
+    /**
+     * 作者本人对这个 viewer 是否可见:未被封禁,或 viewer 是管理员。
+     *
+     * <p>{@code user} 为 {@code null} 时返回 {@code false} —— 不存在与不可见是同一个答案。
+     * 未定义的状态值 fail closed 到「不可见」。
+     *
+     * <p>参数是{@link User}而不是 id,这样调用方通常已经把它查出来了,不必多一次查询。
+     */
+    boolean canSeeAuthor(User user);
 
     /**
      * 把一个<b>以 article_id 引用文章</b>的外层查询,收窄到该 viewer 可见的文章上。

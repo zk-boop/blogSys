@@ -42,7 +42,7 @@ public class UserController {
     public Result<PageResult<ArticleListItemVO>> myArticles(
             @RequestParam(defaultValue = "1") long page,
             @RequestParam(defaultValue = "10") long size) {
-        return Result.ok(articleService.pageByUser(page, size, SecurityUtil.currentUserId(), null));
+        return Result.ok(articleService.pageByUser(page, size, SecurityUtil.currentUserId()));
     }
 
     @GetMapping("/me/favorites")
@@ -62,7 +62,12 @@ public class UserController {
             @PathVariable Long id,
             @RequestParam(defaultValue = "1") long page,
             @RequestParam(defaultValue = "10") long size) {
-        userService.publicProfile(id);
-        return Result.ok(articleService.pageByUser(page, size, id, com.blogsys.common.ArticleStatus.PUBLISHED.getValue()));
+        // publicProfile 是这里的前置条件:用户不存在或已被封禁时抛 404。
+        //
+        // 迁移前这一行是「调一次、把返回值丢掉」—— 那次调用的副作用就是「主页过滤」的
+        // 全部实现,而读代码的人一眼看不出它在做校验。现在用它的结果:意图写在代码里,
+        // 而且后面那次查询也确实建立在这个已确认可见的用户之上。
+        UserVO profile = userService.publicProfile(id);
+        return Result.ok(articleService.pageByUser(page, size, profile.getId()));
     }
 }

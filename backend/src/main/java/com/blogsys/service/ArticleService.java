@@ -78,12 +78,22 @@ public class ArticleService {
                 attachUserAndTags(result.getRecords()));
     }
 
-    public PageResult<ArticleListItemVO> pageByUser(long page, long size, Long userId, Integer status) {
-        Page<Article> result = articleMapper.selectPage(new Page<>(page, size),
-                Wrappers.<Article>lambdaQuery()
-                        .eq(Article::getUserId, userId)
-                        .eq(status != null, Article::getStatus, status)
-                        .orderByDesc(Article::getCreatedAt));
+    /**
+     * 某个作者的文章列表。
+     *
+     * <p><b>语义由 viewer 决定,不由调用方各传一个 status。</b>迁移前这个方法收一个
+     * {@code status} 参数,而两个调用方各传各的:个人中心传 {@code null}(草稿也返回)、
+     * 他人主页传 {@code PUBLISHED} 并且另外靠一次「丢弃返回值的 publicProfile 调用」
+     * 来做封禁过滤 —— 同一个方法、两套规则,而这个方法本身一条都不管。
+     *
+     * <p>现在:看自己(含自己的草稿)、看别人(只有已发布且作者未被封禁)。
+     */
+    public PageResult<ArticleListItemVO> pageByUser(long page, long size, Long userId) {
+        ArticleQuery query = visibility.articles()
+                .includingOwnDrafts()
+                .where(w -> w.eq(Article::getUserId, userId))
+                .orderByDesc(Article::getCreatedAt);
+        Page<Article> result = query.page(page, size);
         return new PageResult<>(result.getTotal(), result.getCurrent(), result.getSize(),
                 attachUserAndTags(result.getRecords()));
     }

@@ -3,6 +3,7 @@ package com.blogsys.service;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.blogsys.common.ArticleStatus;
 import com.blogsys.common.BizException;
+import com.blogsys.visibility.Visibility;
 import com.blogsys.dto.UpdateProfileRequest;
 import com.blogsys.entity.Article;
 import com.blogsys.entity.User;
@@ -25,6 +26,7 @@ public class UserService {
 
     private final UserMapper userMapper;
     private final ArticleMapper articleMapper;
+    private final Visibility visibility;
 
     public UserVO updateProfile(UpdateProfileRequest request) {
         Long userId = SecurityUtil.currentUserId();
@@ -44,7 +46,10 @@ public class UserService {
 
     public UserVO publicProfile(Long userId) {
         User user = userMapper.selectById(userId);
-        if (user == null || Integer.valueOf(1).equals(user.getStatus())) {
+        // 「作者是否可见」这条规则属于可见性模块 —— 它此前散在这里、在 ArticleService、
+        // 在 CommentService 里,而且只有详情页实现了管理员豁免,导致管理员能打开被封禁
+        // 作者的文章却打不开他的主页。现在只有一处实现,管理员豁免处处一致。
+        if (!visibility.canSeeAuthor(user)) {
             throw new BizException(404, "用户不存在");
         }
         UserVO vo = AuthService.toVO(user);
