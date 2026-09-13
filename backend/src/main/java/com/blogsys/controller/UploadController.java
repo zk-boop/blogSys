@@ -71,7 +71,10 @@ public class UploadController {
             return switch (type) {
                 case "avatar" -> saveAvatar(base, image);
                 case "cover" -> saveCover(base, ext, bytes, image);
-                default -> saveOriginal(base, ext, bytes);
+                case "content" -> saveOriginal(base, ext, bytes, image);
+                // 此前是 default -> saveOriginal:type 是个未校验的魔法字符串,
+                // 拼错一个字母就静默按「正文图片」存下去,调用方还以为自己传的是封面。
+                default -> throw new BizException("未知的上传类型: " + type);
             };
         } catch (IOException e) {
             log.error("Upload failed", e);
@@ -101,15 +104,39 @@ public class UploadController {
         }
         String filename = base + ".jpg";
         Files.write(uploadDir.resolve(filename), toJpeg(coverFit(image, COVER_W, COVER_H)));
-        String thumb = base + "-thumb.jpg";
-        Files.write(uploadDir.resolve(thumb), toJpeg(coverFit(image, COVER_THUMB_W, COVER_THUMB_H)));
-        return Result.ok(urls(filename, thumb));
+        return Result.ok(urls(filename, writeThumb(base, image)));
     }
 
-    private Result<Map<String, String>> saveOriginal(String base, String ext, byte[] bytes) throws IOException {
+    /**
+     * 原图 + 缩略图。
+     *
+     * <p><b>为什么「正文里的图片」也要写缩略图:</b>它不是给正文用的,而是因为**读取方是从
+     * 文件名反推缩略图的**(见 {@code ArticleListItems.coverThumb}:把 {@code /uploads/X.ext}
+     * 换成 {@code /uploads/X-thumb.jpg}),而封面是一个自由文本 URL 字段 ——
+     * 作者完全可以把正文图片的 URL 粘进封面。那时列表页会去请求一个从未写入的文件,得到 404。
+     *
+     * <p>这条约定此前只对 {@code type=cover} 成立,于是「粘贴正文图片 URL 当封面」必然裂开。
+     * 现在凡是能解码的图,一律在同一个目录里留下它的缩略图 —— 命名约定成为**事实**,
+     * 而不再是一个只在一半情况下成立的猜测。
+     */
+    private Result<Map<String, String>> saveOriginal(String base, String ext, byte[] bytes, BufferedImage image)
+            throws IOException {
         String filename = base + "." + ext;
         Files.write(uploadDir.resolve(filename), bytes);
-        return Result.ok(urls(filename, null));
+        return Result.ok(urls(filename, writeThumb(base, image)));
+    }
+
+    /**
+     * 写缩略图,返回它的文件名;图片解码不了时返回 {@code null} —— 那时确实没有缩略图,
+     * 调用方也不该声称有(上传响应里的 {@code thumbUrl} 因此缺席)。
+     */
+    private String writeThumb(String base, BufferedImage image) throws IOException {
+        if (image == null) {
+            return null;
+        }
+        String thumb = base + "-thumb.jpg";
+        Files.write(uploadDir.resolve(thumb), toJpeg(coverFit(image, COVER_THUMB_W, COVER_THUMB_H)));
+        return thumb;
     }
 
     private BufferedImage readImage(byte[] bytes) {
