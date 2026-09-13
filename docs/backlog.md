@@ -125,7 +125,17 @@
 | 测试 | 133 → 140;两条专门钉住「查询次数与条数无关」与「每条都带 coverThumb」 |
 | 真实核对 | 推荐接口现在返回 `coverThumb`;所用临时标签关联已逐字还原 |
 
-## v5 候选(来自 2026-09-13 架构评审,8 个候选里已完成 7 个)
+## v5 已完成:6 个 view 的分页切片收成一个模块(候选 04)
+
+详见 `docs/architecture.md` §17。
+
+| 项 | 说明 |
+|---|---|
+| 机制 | 新增 `src/useList.js`(状态 + `phase` 四态)与 `src/components/ListPager.vue`;取数函数只回答「这一页怎么取」,各 view 的筛选由闭包带走 |
+| 修掉 | **「请求失败」不可表达** —— 15 个 view 只有 1 个 catch、零个错误态,失败被渲染成「还没有文章,快来写第一篇吧」;另修 UserProfile 把资料失败说成「用户不存在」、`http.js` 两种错误形状 |
+| 测试 | 32 → 45;真实核对用 `Network.setBlockedURLs` 掐断接口,确认界面说「失败」而不是「没有数据」 |
+
+## v5 候选(来自 2026-09-13 架构评审,8 个候选里已完成 8 个)
 
 完整论证与前后对照图见 `docs/architecture-review-2026-09-13.html`(HTML,含 Mermaid 图)。
 以下是一行摘要,防止那份快照丢失时工作项也一起丢:
@@ -135,7 +145,7 @@
 | 01 | ~~内容可见性收敛成一个 module~~ | Strong | **已完成**,见 `architecture.md` §10 |
 | 02 | ~~让「谁在问、只读」穿过异步 seam~~ | Strong | **已完成**,见 `architecture.md` §11。AI 会话曾跑在没有 principal 的线程池上,导致 ADMIN 专属统计可被任意登录用户读到(D1,已实测),且「只读」承诺被 `incrViewCount` 违反(D2,已实测) |
 | 03 | ~~给 router outlet 加 route identity~~ | Strong | **已完成**,见 `architecture.md` §12。outlet 无 `:key`,`/article/A → /article/B` 复用实例 → URL 变了正文不变 |
-| 04 | 6 个 view 各自手搓的分页切片收成一个 deep module | Strong | 状态五元组 ×6、reload 函数体 ×7、分页块逐字相同 ×6;15 个 view 里只有 1 个 `catch`,「请求失败」当前不可表达 |
+| 04 | ~~6 个 view 各自手搓的分页切片收成一个 deep module~~ | Strong | **已完成**,见 `architecture.md` §17。状态五元组 ×6、load 函数体 ×7、分页块 ×6;15 个 view 里只有 1 个 `catch`,「请求失败」当前不可表达 |
 | 05 | ~~让 session 只有一个归属~~ | Strong | **已完成**,见 `architecture.md` §14。「带 token + 401 登出跳转」曾有 3 份实现 + 4 处 view 复制,7 处可重定向;`loginRequired()` 是死代码 |
 | 06 | ~~把上游解帧搬出传输层~~ | Strong | **已完成**,见 `architecture.md` §13。唯一解帧的代码曾只能靠真实网络触达 → D8(错误帧被静默丢弃)与 D9(零参数工具调用可能被丢掉)长在无测试面的地方 |
 | 07 | ~~SSE seam 升到「对话行为」这一层~~ | Strong | **已完成**,见 `architecture.md` §15。线格式知识曾被实现四次,且 `done` 事件客户端没处理 |
