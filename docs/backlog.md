@@ -103,7 +103,18 @@
 | 修掉 | 401 反应三份实现 + 四处 view 复制(7 个地方能重定向,一处是死代码)· view 与两个 adapter 裸跳 `/login` 导致登录后回不到原页 · `ai.js` 里逐字重建的请求头 · `recommendApi` 停在 fetch module 里 |
 | 测试 | 10 → 21;接线另做一次性浏览器核对(守卫、带查询串、view 三处) |
 
-## v5 候选(来自 2026-09-13 架构评审,8 个候选里已完成 5 个)
+## v5 已完成:把 SSE seam 升到「对话行为」这一层(候选 07)
+
+详见 `docs/architecture.md` §15。
+
+| 项 | 说明 |
+|---|---|
+| 机制 | `ChatEgress`(行为层 seam) + `SseProtocol`(线格式唯一归属,纯函数) + `SseWriterHttp`(只剩写字节);前端侧归 `api/aiEvents.js`;`SseWriter` 删除 |
+| 修掉 | 同一份线格式知识曾被实现四次 · **前端把 `done` 解析了却从不处理** ⇒ 被截断的回答与完整回答长得一模一样 |
+| 测试 | 后端 126 → 133 · 前端 21 → 32;另做跨语言集成核对(真实字节按 7 字符碎片喂给前端解析器) |
+| 契约 | `docs/api.md` 那张表升格为跨语言契约的单一出处 |
+
+## v5 候选(来自 2026-09-13 架构评审,8 个候选里已完成 6 个)
 
 完整论证与前后对照图见 `docs/architecture-review-2026-09-13.html`(HTML,含 Mermaid 图)。
 以下是一行摘要,防止那份快照丢失时工作项也一起丢:
@@ -116,5 +127,5 @@
 | 04 | 6 个 view 各自手搓的分页切片收成一个 deep module | Strong | 状态五元组 ×6、reload 函数体 ×7、分页块逐字相同 ×6;15 个 view 里只有 1 个 `catch`,「请求失败」当前不可表达 |
 | 05 | ~~让 session 只有一个归属~~ | Strong | **已完成**,见 `architecture.md` §14。「带 token + 401 登出跳转」曾有 3 份实现 + 4 处 view 复制,7 处可重定向;`loginRequired()` 是死代码 |
 | 06 | ~~把上游解帧搬出传输层~~ | Strong | **已完成**,见 `architecture.md` §13。唯一解帧的代码曾只能靠真实网络触达 → D8(错误帧被静默丢弃)与 D9(零参数工具调用可能被丢掉)长在无测试面的地方 |
-| 07 | SSE seam 升到「对话行为」这一层 | Strong | 线格式知识被实现四次(`ChatService`、`SseWriterHttp`、测试的 CapturingWriter、`api/ai.js`),且 `done` 事件客户端没处理 |
+| 07 | ~~SSE seam 升到「对话行为」这一层~~ | Strong | **已完成**,见 `architecture.md` §15。线格式知识曾被实现四次,且 `done` 事件客户端没处理 |
 | 08 | 给文章→列表项的投影一个家 | Worth exploring | `ArticleListItemVO` 组装两次,第二份漏了 `coverThumb` 且有 N+1;前端用 `coverThumb \|\| cover` 把缺失掩盖了 |

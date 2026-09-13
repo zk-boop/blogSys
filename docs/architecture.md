@@ -713,5 +713,76 @@ URL（`%2Fme` 正规化成 `/me`），而 `router.push` 那条路保留了 `enco
   点赞按钮确实回到未登录态」。
 - §12.5 的 SFC 层测试缺口与一次性核对模式在此同样适用。
 
+---
+
+## 15. 把 SSE seam 升到「对话行为」这一层：结果（2026-09-13）
+
+候选 07。§5.3 里那条「`SseWriter` 是真 seam，但它真，是因为测试需要它」在此被改掉了层级 ——
+**要改的是层级，不是再加抽象。**
+
+### 15.1 seam 画错了层，知识就守不住
+
+原来的 seam 是 `SseWriter.event(name, dataJson)`：只抽象了**帧外壳**，没抽象**载荷**。
+于是四个事件名、四种载荷形状与它们的顺序，必须被每个调用者、adapter、测试、以及浏览器
+解析器各自知道一遍 —— 这份知识当时被实现了四次：
+
+| 副本 | 位置 |
+|---|---|
+| ① 拼载荷 | `ChatService`（`sendToolEvent` / `sendMessage` / `sendError`） |
+| ② 组帧 | `SseWriterHttp` |
+| ③ 再解析回来 | `ChatServiceTest.CapturingWriter` |
+| ④ 浏览器 | `frontend/src/api/ai.js` 的 `dispatch` |
+
+### 15.2 新的分层
+
+| module | 拥有什么 |
+|---|---|
+| `ChatEgress`（interface） | **行为**：`assistantDelta` · `toolStarted` · `toolFinished` · `failed` · `ended` |
+| `SseProtocol` | **线格式**：事件名常量 · 载荷形状 · 组帧。纯函数，不认识 servlet |
+| `SseWriterHttp` | 只剩「把算好的文本变成字节」 |
+| `frontend/src/api/aiEvents.js` | 浏览器那一侧的线格式归属 |
+| `docs/api.md` 那张表 | 跨语言契约的**单一出处** |
+
+`SseWriter` 随之删除。`ChatService` 现在说行为；它的测试 adapter 换成 `Recorder`，
+断言的是「工具调用的开始与结束各说了一次」「回答是什么」「有没有 `ended`」——
+不再把自己刚序列化出去的 JSON 解析回来。
+
+### 15.3 `done` 不再是装饰
+
+前端此前把 `done` **解析了却从不处理**：`onDone` 一律在读到流末尾时无条件触发。
+于是一个被截断的回答与一个完整回答在界面上长得一模一样 —— 这是 D8 那一类静默失败
+在客户端的双胞胎。
+
+现在 `done` 是唯一的正常收尾凭证：`finish()` 返回 `done` / `error` / `truncated`，
+只有 `done` 才触发 `onDone`，`truncated` 会如实报「连接中断」。契约写进了 `docs/api.md`。
+
+### 15.4 证据
+
+**自动化** 后端 126 → 133（`SseProtocolTest` 7 条：四种事件的帧形状、每帧以空行结束、
+以及四个事件名本身 —— 它们是跨语言契约，改名必须是一次会红掉的决定）。
+前端 21 → 32（`aiEvents.test.js` 11 条，其中三条专门钉收尾：收到 `done` / 收到 `error` /
+两者都没有）。
+
+**跨语言集成核对**：把**真实服务端**的 SSE 字节按 **7 字符碎片**喂给**前端解析器**
+（碎片喂法顺带压了「一行被拆到多次 push」那条路径）：
+
+| 问题 | 结果 |
+|---|---|
+| 纯文本 | HTTP 200 `text/event-stream`，8 个 `message` 帧，收尾 `done`，回答完整 |
+| 带工具调用 | 事件序列 `[tool:getHotArticles, tool:getHotArticles(result), done]`，55 个 `message` 帧，收尾 `done`，回答完整 |
+
+这条核对同时证明了两件事：两侧的名字与载荷**真的对得上**，以及「只有 `done` 才算完整」
+在真实流上成立。它是本例中唯一能跨语言验证契约的手段 —— 两侧没有可共享的代码。
+
+### 15.5 仍未覆盖的
+
+- **`ChatStreamListener` 仍是「假 seam」**（§5.3）：只有一个匿名内部类的实现。
+  本候选没有动它 —— 它已经在正确的层（行为），没有必要为了对称再加一个 adapter。
+- **模型的推理尾巴会进正文**：核对时观察到回答里带出 `</think>`。那是 provider 把
+  reasoning 混在 `content` 里，不是解帧或组帧的问题；本仓库既没有剥离它，也没有
+  在契约里提到它。若要处理，应在 `StreamReducer` 之上做 —— 那是一个新决定，不是缺陷修复。
+- **没有心跳帧，响应头要到第一个 token 才 flush**（§5.5 原有）。
+- §12.5 的 SFC 层测试缺口与一次性核对模式在此同样适用。
+
 
 
