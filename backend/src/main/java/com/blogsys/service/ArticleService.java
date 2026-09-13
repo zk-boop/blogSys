@@ -21,6 +21,7 @@ import com.blogsys.mapper.LikeMapper;
 import com.blogsys.mapper.TagMapper;
 import com.blogsys.security.LoginUser;
 import com.blogsys.security.SecurityUtil;
+import com.blogsys.visibility.Visibility;
 import com.blogsys.vo.ArticleDetailVO;
 import com.blogsys.vo.ArticleListItemVO;
 import com.blogsys.vo.FavoriteVO;
@@ -53,6 +54,7 @@ public class ArticleService {
     private final LikeMapper likeMapper;
     private final FavoriteMapper favoriteMapper;
     private final UserService userService;
+    private final Visibility visibility;
 
     private static final String ACTIVE_USERS_SQL = "SELECT id FROM users WHERE status = 0";
 
@@ -115,18 +117,8 @@ public class ArticleService {
     }
 
     public ArticleDetailVO detail(Long id) {
-        Article article = articleMapper.selectById(id);
-        if (article == null) {
-            throw new BizException(404, "文章不存在");
-        }
-        if (Objects.equals(article.getStatus(), ArticleStatus.DRAFT.getValue())) {
-            if (!canViewDraft(article.getUserId())) {
-                throw new BizException(404, "文章不存在");
-            }
-        } else {
-            if (isAuthorBanned(article.getUserId()) && !SecurityUtil.isAdmin()) {
-                throw new BizException(404, "文章不存在");
-            }
+        Article article = visibility.articles().includingOwnDrafts().require(id).article();
+        if (ArticleStatus.of(article.getStatus()) == ArticleStatus.PUBLISHED) {
             articleMapper.incrViewCount(id);
             article.setViewCount(article.getViewCount() + 1);
         }
@@ -190,26 +182,12 @@ public class ArticleService {
                 .collect(Collectors.toSet());
     }
 
-    private boolean isAuthorBanned(Long userId) {
-        User author = userService.findByIds(List.of(userId)).get(userId);
-        return author != null && Integer.valueOf(1).equals(author.getStatus());
-    }
-
     private boolean isFavoritedByCurrentUser(Long articleId) {
         try {
             Long userId = SecurityUtil.currentUserId();
             return favoriteMapper.selectCount(Wrappers.<Favorite>lambdaQuery()
                     .eq(Favorite::getUserId, userId)
                     .eq(Favorite::getArticleId, articleId)) > 0;
-        } catch (BizException e) {
-            return false;
-        }
-    }
-
-    private boolean canViewDraft(Long ownerId) {
-        try {
-            LoginUser loginUser = SecurityUtil.currentUser();
-            return loginUser.getId().equals(ownerId) || "ADMIN".equals(loginUser.getRole());
         } catch (BizException e) {
             return false;
         }
