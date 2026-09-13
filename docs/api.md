@@ -85,6 +85,15 @@ SSE 事件类型 —— 这张表是**跨语言契约**:服务端的事件名与
 
 `done` 与 `error` 互斥且必居其一:两者都没收到就说明连接被截断,客户端应当如实报错,而不是把半截回答当成完整回答。
 
+**心跳帧**(不是事件,没有 `event`/`data` 行):
+
+| 帧 | 频率 | 说明 |
+|---|---|---|
+| `: ping`(SSE 注释) | 每 10 秒,对话一开始就发一次 | 浏览器按规范**忽略**它。它的用途有三个:响应头不必等到第一个 token 才 flush;服务端靠「写不出去」发现客户端已经断开(这是取消在服务端唯一的传播信号);客户端靠「沉默多久」区分「AI 正在想」与「连接已经死了」 |
+
+两侧的常数必须一起改:服务端是 `ChatController.HEARTBEAT_SECONDS`(10),
+浏览器端是 `createAliveWatch` 的 `timeoutMs`(30 = 连丢三次)。
+
 Agent 可用工具:`searchArticles(keyword)`、`getArticleDetail(id)`、`getUserProfile(userId)`、`getHotArticles()`、`recommendArticles(articleId)`、`getSiteStats()`。
 
 **全部为只读**,且这一条现在由构造保证:`getArticleDetail` 走的 `ArticleService.detail` 里没有任何写操作 —— 记浏览是 HTTP 层在 `GET /api/articles/{id}` 上单独调 `recordView` 做的。AI 查一次详情不会改变浏览量(因而不会把自己问过的文章顶进热门榜)。

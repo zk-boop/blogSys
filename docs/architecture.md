@@ -1317,17 +1317,21 @@ JsonParseException: Unexpected character ('这'): was expecting comma to separat
 
 ### 24.4 这一项还没收的四条
 
+> 四条**都收完了**（2026-09-13）：前两条见 §28，第三条是「已决定不做」，
+> 第四条是 C4（§25、§26、§29、§30）。本节保留原文，是为了让「当时为什么停在这里」可查。
+
 - **截断出现两次，且都可能切在 JSON 字符串中间**（`ChatService` 截 4000、
   `ArticleDetailTool` 截 2000）。切断一个 JSON 字符串会让那段「JSON」不再合法 ——
   与 24.1 第 3 项是同一类问题，但改它要决定「截断后怎么才是合法 JSON」（是丢弃、
-  还是把尾巴补成合法结构），那是个新决定。
+  还是把尾巴补成合法结构），那是个新决定。**→ §28.1：砍结构，不砍文本。**
 - **`AbstractTool` 现在有了一个真正的成员**（`requiredLong`），但它依然不是抽象类意义上的
   「模板」；`json()` 把序列化失败吞成假成功（`{"error":"结果序列化失败"}`）——
   调用者无法察觉。**日志那一半已在 §27 收掉**；「抛还是返回信封」仍是待决定项。
+  **→ §28.2：抛。**
 - **`ChatStreamListener` 仍是假 seam**（§5.3，候选 07 记录）。**这一条已决定不做**：
   候选 07 判定它「已经在正确的层（行为），没有必要为了对称再加一个 adapter」——
   它是「只有一个实现」而不是「画错了层」。记在这里是为了不再挂在待办上。
-- C 节剩余：C4（对话生命周期与取消）。
+- C 节剩余：C4（对话生命周期与取消）。**→ §25、§26、§29、§30。**
 
 ---
 
@@ -1362,11 +1366,11 @@ JsonParseException: Unexpected character ('这'): was expecting comma to separat
 | 错误信封改由 `ObjectMapper` 构造 | 完成（§24.1） |
 | 工具重名说清是谁 | 完成（§24.1） |
 | `toolResult` 收下 name 又丢掉 | 完成（§24.1，删掉那个参数） |
-| `json()` 把失败吞成假成功 | **日志那一半完成**（本节）；「抛还是返回信封」待决定 |
-| 双重截断且可能切在 JSON 中间 | **待决定** |
-| `ChatStreamListener` 是假 seam | **已决定不做**（见 §24.4 的说明） |
+| `json()` 把失败吞成假成功 | 完成（§27 补可见性 + §28.2 改成抛出） |
+| 双重截断且可能切在 JSON 中间 | 完成（§28.1，砍结构不砍文本） |
+| `ChatStreamListener` 是假 seam | 已决定不做（见 §24.4 的说明） |
 
-C3 因此是 **6.5/8**：只有两条真正还卡在决定上。
+C3 因此是 **8/8**。
 
 ---
 
@@ -1408,15 +1412,19 @@ java.util.concurrent.RejectedExecutionException: 队列已满
 
 ### 25.3 这一项还没收的四条
 
+> 四条**都收完了**（2026-09-13）：池尺寸见 §29，存活检查与心跳见 §30，
+> 最后一条已在 §26 收掉。本节保留原文，是为了让「当时为什么停在这里」可查。
+
 - **线程池的尺寸与意图不符。** `corePoolSize=2 / maxPoolSize=4 / queueCapacity=20` ——
   `ThreadPoolExecutor` 只在**队列满之后**才扩容，所以稳态并发是 2，另外 20 个静默排队，
   而 `maxPoolSize=4` 几乎永远用不到。改成 4 还是缩队列，是**容量决策**（取决于这台机器
-  愿意为 AI 对话付多少并发），不是缺陷修复。
+  愿意为 AI 对话付多少并发），不是缺陷修复。**→ §29：4 就是 4。**
 - **轮与轮之间没有存活检查**，因此浏览器「停止」传不到服务端：用户点了停止，服务端仍会
   跑完剩余轮次（每轮最长 120 秒）。要修得先决定用什么信号传播取消（`AsyncContext`
   的 error/complete 回调？还是请求断开检测），并且它与「心跳帧」是同一件事的两面。
+  **→ §30：信号是写失败，心跳让它按期发生。**
 - **没有心跳帧**，响应头要到第一个 token 才 flush —— 所以「AI 正在想」与「连接已经死了」
-  在客户端上不可区分。这与上一条应当一起做。
+  在客户端上不可区分。这与上一条应当一起做。**→ §30.2、§30.5。**
 - **写 tool 事件失败会走成一条完整的 `log.error("AI chat failed")` 堆栈** ——
   一次正常用户操作被记成服务故障。**已在 §26 收掉。**
 
@@ -1429,12 +1437,13 @@ java.util.concurrent.RejectedExecutionException: 队列已满
 | C5 用户显示 fallback | 完成（§21） |
 | C6 懒加载兜底 | 完成（§22） |
 | C1 viewer 作为被接受的依赖 | 完成（§23） |
-| C3 工具结果没有信封 | **4/8**（§24，其余四条各卡在一个设计决定上） |
-| C4 对话生命周期与取消 | **1/5**（本节，其余四条同上） |
+| C3 工具结果没有信封 | **8/8**（§24、§27、§28） |
+| C4 对话生命周期与取消 | **5/5**（§25、§26、§29、§30） |
 
 C3 与 C4 剩下的九条**都不是缺陷修复**：每一条都要先决定「截断后怎么才算合法 JSON」
 「序列化失败时抛还是返回信封」「线程池该多大」「取消用什么信号」。这些决定属于用户，
-不属于实现者 —— 所以它们被列在这里，而不是被悄悄做掉。
+不属于实现者 —— 所以当时它们被列在这里，而不是被悄悄做掉。**§28–§30 记的就是
+「你定」之后每一个选择的理由与证据。**
 
 ---
 
@@ -1481,9 +1490,238 @@ expected: <null> but was: <AI 服务异常,请稍后重试>
 |---|---|
 | 拒绝时客户端收不到任何错误 | 完成（§25） |
 | 断连被记成服务故障 | 完成（本节） |
-| 线程池尺寸与意图不符（稳态并发 2，`maxPoolSize=4` 几乎用不到） | **待决定**：你要的并发是 2 还是 4 |
-| 轮间无存活检查（浏览器「停止」传不到服务端） | **待决定**：取消用什么信号传播 |
-| 无心跳帧（响应头要等第一个 token 才 flush） | **待决定**：与上一条应一起做 |
+| 线程池尺寸与意图不符（稳态并发 2，`maxPoolSize=4` 几乎用不到） | 完成（§29，4 就是 4） |
+| 轮间无存活检查（浏览器「停止」传不到服务端） | 完成（§30） |
+| 无心跳帧（响应头要等第一个 token 才 flush） | 完成（§30，与上一条一起做的） |
+
+---
+
+## 28. C3 之二：截断与假成功（2026-09-13）
+
+§24.4 剩下的两条各卡在一个决定上。**决定已由用户授权（「你定」），本节记录选择与理由。**
+
+### 28.1 决定一：砍结构，不砍文本
+
+此前那条 4000 字上限长在 `ChatService` 里，而且是用 `substring` 执行的 —— 在**序列化
+之后**的文本上切。切断一个 JSON 字符串，那段「JSON」就不再是 JSON，而它会作为工具结果
+原样回到模型那里：**模型读到的不是数据，是语法错误**，而它会拿这段语法错误继续往下推理。
+与 §24.1 第 3 项（错误信封靠拼接）是同一类问题，只是这一处更隐蔽 —— 它只在结果真的
+很大时才发作。
+
+报告给的选项是「丢弃」还是「把尾巴补成合法结构」。选的是**第三种**：
+
+> 别让坏结构产生。序列化是最后一步，砍要砍在它前面。
+
+- 上限搬到工具层唯一的出口：`AbstractTool.json()` → 新增 `ResultBudget`。
+- 超预算时**整条丢弃**数组尾部的一个条目、重新序列化、再看还超不超 ——
+  **从来没有哪一步切开过一个 token**。
+- 丢掉条目时 `count` 跟着改成实际条数：否则模型会照着 `count: 5` 说出一个它手上只有
+  3 条的数据。根上再加一个 `truncated: true` 如实标注。
+- 没有数组可丢时（单个超长字符串字段），砍在**值**上再序列化 —— 同样是先砍后序列化。
+- `ChatService` 不再碰结果长度，只负责原样转发。
+
+`ArticleDetailTool` 的 2000 字正文限制保留：它本来就在**值**上截断，序列化在其后，
+所以从来不是这一类问题。
+
+### 28.2 决定二：序列化失败要抛
+
+`json()` 此前返回 `{"error":"结果序列化失败"}` —— 而它与一个**正常的**工具结果长得
+一模一样：调用者分不出「工具跑完了但是空的」和「工具坏了」。工具契约本来就是「返回一段
+给模型看的 JSON 文本」，给不出就是给不出。
+
+现在抛 `BizException`，走 `ChatService.executeTool` 那条**统一失败路径**：记一条 WARN
+（§27 补上的可见性原样保留），并给模型一个错误信封 —— 模型仍然知道发生了什么，
+而日志里不再是一片安静。
+
+### 28.3 证据
+
+**自动化** 165 → 185。新增 `ResultBudgetTest` 7 条、`SseWriterHttpTest` 5 条，
+`ToolContractTest` / `ChatServiceTest` / `ChatControllerTest` / `SseProtocolTest` /
+`AiExecutorConfigTest` 各加若干。
+
+`ResultBudgetTest` 的**第一条就是对照**，而且是自足的对照：同一份数据、同一个上限，
+老办法切出来的东西解析不了 ——
+
+```
+assertThrows(Exception.class, () -> mapper.readTree(whole.substring(0, LIMIT) + "…(已截断)"))
+```
+
+如果这句话能解析，说明这条对照失去了分辨力，下面所有「合法 JSON」的断言也就没有意义了。
+
+---
+
+## 29. C4 之三：说 4 就是 4（2026-09-13）
+
+### 29.1 一条读得出意图、跑不出意图的配置
+
+```
+corePoolSize=2 / maxPoolSize=4 / queueCapacity=20
+```
+
+`ThreadPoolExecutor` **只在队列满之后**才扩容，所以这条配置的实际含义是**稳态并发 2**：
+另外 20 个静静地排队，而 `maxPoolSize=4` 几乎永远用不到。一个写着 4、跑着 2 的配置，
+读的人会照它做容量判断。
+
+现在 4 就是 4：`corePoolSize = maxPoolSize = 4`、`queueCapacity = 16` ——
+**同时在飞 20 场对话，与这个池此前的总容量一致**。一次对话几乎全程在等模型（IO），
+4 个线程很便宜；超出的部分排队，排满就明确拒绝（收尾路径见 §25）。
+
+### 29.2 证据
+
+**自动化** 加 1 条 `chatPool_shouldRunFourConversationsAtOnce`：四条任务各占住一个线程，
+断言它们**同时**跑起来；第五个提交后 300ms 仍在排队，放行后才跑。
+
+**对照**：把 `CONCURRENT_CHATS` 改回 2 再跑，它立刻红，而且红在正确的地方 ——
+
+```
+只有不到 4 场对话同时跑起来 —— 旧配置(core 2 / queue 20)正是这样:配置写着 4,实际稳态并发是 2
+```
+
+顺带修好了一条**靠概率通过**的测试：`poolThread_shouldNotKeepTheIdentity_afterTheTask`
+原来反复提交任务去「撞」同一个池线程（20 次，池里 2 个线程），改池大小会让它变得不确定。
+现在先用 4 条带身份的任务占满 4 个 worker，再提交 4 条不带身份的探针 ——
+池已满，队列里的任务只能由那 4 个线程接手，**每一条断言都确定地落在复用过的线程上**。
+
+---
+
+## 30. C4 之四：心跳与取消（2026-09-13）
+
+### 30.1 取消的信号是什么
+
+报告问的是「用什么信号传播取消：`AsyncContext` 的 error/complete 回调？还是请求断开检测？」
+本机实验（30.4）给出的答案是**后者，而且只有一个**：
+
+> 一个已经断开的连接不会以别的方式通知服务端。servlet 的 error/complete 回调不会因为
+> 对端关掉而触发，**只有真的写一次才知道**。
+
+所以信号是**写失败**，而心跳是让这个信号**按期发生**的装置 —— 这两件事是同一件事的两面，
+报告说「应当一起做」是对的。
+
+### 30.2 心跳
+
+- `SseProtocol.comment(text)` → `": ping\n\n"`：SSE 注释帧，浏览器端按规范忽略它。
+  它不是事件，所以**不产生任何数据事件，也不能被当成收尾凭证**。
+- `ChatEgress` 加两个行为层成员：`keepAlive()`（尽力而为）与 `stillConnected()`。
+  「客户端还在不在」是**通道**的属性，不是服务层的猜测。
+- `SseWriterHttp` 持有那个事实：**任何一次写失败**（含 `getOutputStream()` 自己抛的
+  `IllegalStateException`）都把 `connected` 置为 false，且只保留第一次的 DEBUG 痕迹。
+- `ChatController` 起一个定时任务（`chatHeartbeatScheduler`，守护单线程），
+  **首次延迟 0**、每 10 秒一个 —— 首次延迟为 0 是有行为后果的：响应头在第一次写就
+  flush，而不是等模型吐出第一个 token（那可能是一分钟后）。
+- 对话收尾时 `heartbeat.cancel(false)`，再 `asyncContext.complete()`。
+
+### 30.3 取消
+
+`ChatService.runToolLoop` 在**每一轮开始前**问一次 `egress.stillConnected()`，
+不在就直接抛 `ClientDisconnectedException`：
+
+```
+用户点停止 ⇒ 连接断 ⇒ 心跳写失败 ⇒ stillConnected=false ⇒ 下一轮不再开始
+```
+
+为什么要专门问：一次安静的模型轮次最长 120 秒，而「下一次写」要等到那一轮的第一个
+token —— 中间这段时间，池线程正卡在 `chatStream` 里，什么都不知道。加这一问之后，
+停止的生效上界从「剩下的所有轮次」缩到「当前这一轮」。
+
+### 30.4 证据
+
+**自动化** 后端 185、前端 68（`npm test`，零依赖 `node --test`）。
+
+- `SseWriterHttpTest` 5 条：心跳帧的字节、写失败翻标志（IOException 与 RuntimeException
+  两种）、增量写失败仍当场抛出、没断时事件照常。
+- `SseProtocolTest` +1：心跳是注释帧（跨语言契约的那一行）。
+- `ChatServiceTest` +2：轮间检查（下面有对照）、工具结果原样转发。
+- `ChatControllerTest` +2：心跳被调度、被取消、首次延迟 0；被拒绝的路径**不留**心跳。
+- 前端 +9：`aiEvents.test.js` 认注释帧是心跳而不是数据（且不能让半截回答伪装成完整
+  回答）；`liveness.test.js` 7 条用**注入的假计时器**验证 `createAliveWatch` ——
+  沉默 30 秒（= 连丢三次心跳）才判定断连，`stop()` 之后迟到的帧救不活已结束的对话。
+
+**对照**（取消这一条）：把轮间那一问去掉，`chat_shouldStopBetweenRounds_whenTheClientIsGone`
+立刻红，红在它该红的地方 ——
+
+```
+openAiClient.chatStream(...)  Wanted 1 time: But was 2 times:
+```
+
+也就是：用户已经走了，服务端照样开始烧下一轮。
+
+**真机**（本机 8080 + 真实模型，用裸 TCP 直接读原始字节）：
+
+1. 正常一场对话，原始流的第一帧就是 `8\r\n: ping\r\n\r\n`，之后每 10 秒一个 ——
+   心跳确实在线上，且响应头立刻 flush。工具事件与回答增量与改动前无差别。
+2. 收到 1650 字节后**关掉客户端**（普通 FIN，不设 linger，即浏览器 `abort()` 关的那种），
+   日志随即出现（DEBUG，各一行，**没有堆栈**）：
+
+```
+[ai-chat-1] SseWriterHttp : 往客户端写失败,判定为已断开: ServletOutputStream failed to flush: ...
+[ai-chat-1] ChatService   : 客户端已断开,对话中止: ServletOutputStream failed to flush: ...
+```
+
+   即「谁走了」这件事第一次在日志里说得清，且不再长得像服务故障。
+
+**一句诚实的话**：本机上这个模型会**持续吐空增量**，所以安静窗口很短，
+断连信号是由增量写失败（而不是心跳写失败）先报出来的；心跳写失败那条路
+由 `SseWriterHttpTest` 覆盖，真机上没有被单独触发过。两半都验了，但不是同一半。
+
+### 30.5 前端那半边
+
+心跳在浏览器这边换来一件原本做不到的事：**「AI 正在想」与「连接已经死了」不再长得一样**。
+
+- `aiEvents.js`：注释行 → `handlers.onAlive?.()`，仅此而已（不产生事件、不影响收尾判定）。
+- `liveness.js`：`createAliveWatch({ onStall, timeoutMs = 30000, ... })` —— 每收到一次
+  心跳就重新起表，表真的响了说明服务器已经连丢三次心跳。计时器从外面注入，
+  所以测试不需要真实时间。
+- `AiChat.vue`：表响 ⇒ 把这条回答标成「连接已中断，请重试」、停表、**并 `abort()` 那条
+  fetch**（表响就是连接已死的结论，那条流还挂着只是在读一个不会来的字节；顺手也保证
+  它的迟到回调不会再动界面）。`onDone` / `onError` / 用户点「停止」都停表。
+
+### 30.6 一处顺带修掉的真缺陷
+
+`SseWriterHttp.write()` 里 `response.getOutputStream()` 原本写在 `try` **外面** ——
+那么当响应已经提交或关闭、异常正是由它自己抛出时，探测恰好漏掉那一种失败。
+单测（`keepAlive_shouldMarkDisconnected_whenTheWriteFailed`）把它抓出来了：
+「写都写不出去，客户端已经不在了」这条断言第一次跑就是红的。
+
+**教训**：**探测本身也要在 try 里**。写这份探测的初衷就是「凡是写不出去都算断开」，
+而最容易漏掉的恰恰是「还没开始写就失败了」。
+
+---
+
+## 31. C4 附带发现：取消路径上还有两条 ERROR（2026-09-13）
+
+真机实验 2 里，客户端断开之后除了上面那两行 DEBUG，还多了**两条 ERROR 加完整堆栈**：
+
+```
+ERROR [dispatcherServlet] : Servlet.service() for servlet [dispatcherServlet] threw exception
+org.springframework.security.authorization.AuthorizationDeniedException: Access Denied
+    ... at org.apache.catalina.core.AsyncContextImpl.setErrorState(AsyncContextImpl.java:442)
+    at org.apache.catalina.connector.CoyoteAdapter.asyncDispatch(CoyoteAdapter.java:155)
+
+ERROR [Tomcat].[localhost] : Exception Processing [ErrorPage[errorCode=0, location=/error]]
+jakarta.servlet.ServletException: Unable to handle the Spring Security Exception
+because the response is already committed.
+```
+
+机制（从堆栈读出来的，不是猜的）：客户端断开 ⇒ Tomcat 在**连接层**收到 socket 错误 ⇒
+异步请求进入 ERROR 状态 ⇒ 容器做一次 `/error` 的**错误派发** ⇒ 而 `JwtAuthFilter` 是
+`OncePerRequestFilter`，默认**跳过 ERROR 派发** ⇒ 那次派发里没有身份 ⇒
+`.anyRequest().authenticated()` 拒绝 `/error` ⇒ 异常 ⇒ 已经提交的响应渲染不了错误页，
+于是再记一条 ERROR。
+
+也就是说：**§26 在应用层把「用户关页面」和「服务故障」分开了，容器层这一半还在。**
+一次正常用户操作仍然会在日志里留下两条 ERROR 加堆栈。
+
+**本轮没有改它**，两个原因，都属于不该由实现者代拍的决定：
+
+1. 修法是改**授权面**（`/error` 加进 `permitAll`，或让 `JwtAuthFilter` 也跑 ERROR 派发）。
+   后者对匿名请求无效（匿名请求的错误派发同样会被拒），所以真正的选项只有前者 ——
+   而「`/error` 对所有人开放」是一次安全面的变更。
+2. 还有一个我没验证的后果：放行之后容器会真的去渲染 `/error`，而此时响应**已经提交**
+   （SSE 流已经开始写字节），错误页的内容有可能被塞进那个已经开始的 SSE 流里。
+   这一条需要它自己的对照实验，不能顺手改。
+
+记在这里，是因为它是**同一条取消路径**上的另一半，而这一轮第一次把它看见了。
+
 
 
 
