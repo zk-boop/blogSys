@@ -17,6 +17,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -91,9 +92,22 @@ class ChatServiceTest {
         final List<String> events = new ArrayList<>();
         final StringBuilder answer = new StringBuilder();
         String failure;
+        /** true 时,往它写就抛 —— 模拟客户端已经断开。 */
+        private final boolean disconnected;
+
+        Recorder() {
+            this(false);
+        }
+
+        Recorder(boolean disconnected) {
+            this.disconnected = disconnected;
+        }
 
         @Override
         public void assistantDelta(String delta) {
+            if (disconnected) {
+                throw new IllegalStateException("broken pipe");
+            }
             events.add("delta");
             answer.append(delta);
         }
@@ -270,6 +284,19 @@ class ChatServiceTest {
         verify(openAiClient, times(2)).chatStream(captor.capture(), anyList(), any());
         assertTrue(captor.getAllValues().get(1).toString().contains("未知工具"));
         verify(tool, never()).execute(any());
+    }
+
+    @Test
+    @DisplayName("客户端断开时不再朝他发「AI 服务异常」,也不把它当成服务故障")
+    void chat_shouldTreatAWriteFailure_asClientDisconnect() {
+        streamAnswer("慢慢写");
+        Recorder recorder = new Recorder(true);
+
+        assertDoesNotThrow(() -> chatService.chat(List.of(ChatMessage.user("x")), recorder, VIEWER));
+
+        assertNull(recorder.failure,
+                "客户端已经不在,没有收件人 —— 此前这里会朝它发一句「AI 服务异常」,"
+                        + "并在日志里留下一条 log.error 加完整堆栈");
     }
 
     /** 第一次 chatStream 调用实际发出去的 tools 列表。 */

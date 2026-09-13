@@ -56,15 +56,42 @@ public class ChatService {
         try {
             boolean hasToolCalls = runToolLoop(messages, egress, viewer);
             if (hasToolCalls) {
-                egress.assistantDelta("抱歉,处理你的请求时步骤过多,请缩小问题范围后重试。");
+                writeToClient(() -> egress.assistantDelta(
+                        "抱歉,处理你的请求时步骤过多,请缩小问题范围后重试。"));
             }
-            egress.ended();
+            writeToClient(egress::ended);
+        } catch (ClientDisconnectedException e) {
+            // 客户端断开。这是**正常的用户操作**(关掉标签页、点了停止),不是服务故障。
+            //
+            // 此前它落到下面的兜底分支,被记成一条 `log.error("AI chat failed")` 加完整堆栈,
+            // 并且还会朝一个已经不在的客户端发一句「AI 服务异常」——
+            // 于是「用户关了页面」在日志里长得和「AI 服务挂了」一模一样。
+            log.debug("客户端已断开,对话中止: {}", e.getCause() == null ? "" : e.getCause().getMessage());
         } catch (BizException e) {
             egress.failed(e.getMessage());
         } catch (Exception e) {
             log.error("AI chat failed", e);
             egress.failed("AI 服务异常,请稍后重试");
         }
+    }
+
+    /**
+     * 往客户端写。写不出去只有一个合理解释:**客户端断了**。
+     *
+     * <p>把它转成一个内部信号,是为了让「写不出去」在下面那三个 catch 里能和
+     * 「AI 服务真的出错了」分开 —— 两者此前不可区分,因为都是 Exception。
+     */
+    private static void writeToClient(EgressWrite write) {
+        try {
+            write.write();
+        } catch (Exception e) {
+            throw new ClientDisconnectedException(e);
+        }
+    }
+
+    @FunctionalInterface
+    private interface EgressWrite {
+        void write() throws Exception;
     }
 
     /** 流式工具循环:内容增量实时转发;返回是否有未消费的工具调用(轮数耗尽)。 */
@@ -74,12 +101,7 @@ public class ChatService {
             openAiClient.chatStream(messages, toolRegistry.definitions(viewer), new ChatStreamListener() {
                 @Override
                 public void onContent(String delta) {
-                    try {
-                        egress.assistantDelta(delta);
-                    } catch (Exception e) {
-                        // 写不出去只有一个合理解释:客户端断了。转成内部信号中断读取。
-                        throw new StreamAbortedException(e);
-                    }
+                    writeToClient(() -> egress.assistantDelta(delta));
                 }
 
                 @Override
@@ -116,7 +138,7 @@ public class ChatService {
             return errorEnvelope("未知工具: " + name);
         }
         Map<String, Object> args = parseArgs(call);
-        egress.toolStarted(name, args);
+        writeToClient(() -> egress.toolStarted(name, args));
         String result;
         try {
             result = tool.execute(args);
@@ -127,8 +149,9 @@ public class ChatService {
         if (result.length() > TOOL_RESULT_LIMIT) {
             result = result.substring(0, TOOL_RESULT_LIMIT) + "…(已截断)";
         }
-        egress.toolFinished(name, args, result);
-        return result;
+        String reported = result;
+        writeToClient(() -> egress.toolFinished(name, args, reported));
+        return reported;
     }
 
     /**
@@ -157,10 +180,15 @@ public class ChatService {
         }
     }
 
-    /** 客户端断开时中断流式读取的内部信号。 */
-    private static final class StreamAbortedException extends RuntimeException {
+    /**
+     * 「写不进客户端」的内部信号 —— 客户端断开、连接被中断,或 servlet 流已经关了。
+     *
+     * <p>它与「AI 服务出错」是两件事:前者是正常用户操作(关页面、点停止)导致的中止,
+     * 后者才该记成服务故障。此前两者都是 Exception,于是只能一起记成后者。
+     */
+    private static final class ClientDisconnectedException extends RuntimeException {
 
-        private StreamAbortedException(Throwable cause) {
+        private ClientDisconnectedException(Throwable cause) {
             super(cause);
         }
     }
