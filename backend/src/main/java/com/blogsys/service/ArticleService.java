@@ -21,6 +21,7 @@ import com.blogsys.mapper.LikeMapper;
 import com.blogsys.mapper.TagMapper;
 import com.blogsys.security.LoginUser;
 import com.blogsys.security.SecurityUtil;
+import com.blogsys.visibility.ArticleQuery;
 import com.blogsys.visibility.Visibility;
 import com.blogsys.vo.ArticleDetailVO;
 import com.blogsys.vo.ArticleListItemVO;
@@ -56,14 +57,8 @@ public class ArticleService {
     private final UserService userService;
     private final Visibility visibility;
 
-    private static final String ACTIVE_USERS_SQL = "SELECT id FROM users WHERE status = 0";
-
     public PageResult<ArticleListItemVO> page(long page, long size, Long tagId, String keyword) {
-        Page<Article> result;
-        var wrapper = Wrappers.<Article>lambdaQuery()
-                .eq(Article::getStatus, ArticleStatus.PUBLISHED.getValue())
-                .inSql(Article::getUserId, ACTIVE_USERS_SQL)
-                .orderByDesc(Article::getCreatedAt);
+        ArticleQuery query = visibility.articles().orderByDesc(Article::getCreatedAt);
         if (tagId != null) {
             List<Long> articleIds = articleTagMapper.selectList(
                             Wrappers.<ArticleTag>lambdaQuery().eq(ArticleTag::getTagId, tagId))
@@ -71,13 +66,14 @@ public class ArticleService {
             if (articleIds.isEmpty()) {
                 return new PageResult<>(0, page, size, new ArrayList<>());
             }
-            wrapper.in(Article::getId, articleIds);
+            query = query.where(w -> w.in(Article::getId, articleIds));
         }
         if (StringUtils.hasText(keyword)) {
             String kw = escapeLike(keyword);
-            wrapper.and(w -> w.like(Article::getTitle, kw).or().like(Article::getContent, kw));
+            // 外层 where 已经把这一组整体括起,所以这里的 or() 只在本组内生效
+            query = query.where(w -> w.like(Article::getTitle, kw).or().like(Article::getContent, kw));
         }
-        result = articleMapper.selectPage(new Page<>(page, size), wrapper);
+        Page<Article> result = query.page(page, size);
         return new PageResult<>(result.getTotal(), result.getCurrent(), result.getSize(),
                 attachUserAndTags(result.getRecords()));
     }
@@ -93,13 +89,10 @@ public class ArticleService {
     }
 
     public List<ArticleListItemVO> hot(int size) {
-        List<Article> articles = articleMapper.selectList(
-                Wrappers.<Article>lambdaQuery()
-                        .eq(Article::getStatus, ArticleStatus.PUBLISHED.getValue())
-                        .inSql(Article::getUserId, ACTIVE_USERS_SQL)
-                        .gt(Article::getViewCount, 0)
-                        .orderByDesc(Article::getViewCount)
-                        .last("LIMIT " + Math.min(size, 20)));
+        List<Article> articles = visibility.articles()
+                .where(w -> w.gt(Article::getViewCount, 0))
+                .orderByDesc(Article::getViewCount)
+                .list(Math.min(size, 20));
         return attachUserAndTags(articles);
     }
 
