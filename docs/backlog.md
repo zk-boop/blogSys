@@ -154,7 +154,7 @@
 | C3 | 工具结果没有信封 | 参数强转被复制三次;schema 无 `required`;错误是字符串拼的 JSON(驱动消息里一个引号就能造出坏 JSON);截断两处且都可能切在字符串中间;`AbstractTool` 无抽象成员;`json()` 把序列化失败吞成假成功;`toolResult` 收了 name 又丢掉;`ToolRegistry` 用 `Collectors.toMap` 建表,重名会在启动时崩 |
 | C4 | 对话生命周期与取消不在内核里 | 稳态并发 2、另 20 个静默排队(见 §5.5);拒绝时客户端收不到任何 SSE 错误;轮与轮之间无存活检查 ⇒ 浏览器「停止」传不到服务端;无心跳帧 |
 | C5 | ~~用户显示的 fallback 约 20 份~~ | **已完成**(§21)。新增 `utils/person.js`(`displayName`/`displayAvatar`),替换 10 个文件的全部调用点;两处刻意保留(表单预览、表单默认值)。另记一条硬约束:进 `node --test` 的模块必须写 `.js` 扩展名 |
-| C6 | 懒加载失败兜底横跨三处 | `router/index.js` 的单槽注册表(第二个订阅者会静默顶掉第一个)+ `App.vue` 的三条重试路径;`app.config.errorHandler` 从不设置 |
+| C6 | ~~懒加载失败兜底横跨三处~~ | **已完成**(§22)。新增 `router/loadError.js`:用 vue-router 自己的 `isNavigationFailure` 取代裸启发式、单槽注册表改成订阅表(第二个订阅者不再静默顶掉第一个)、`app.config.errorHandler` 补上归属。**新结论**:ESM 模块表会缓存失败的 import ⇒ 只有整页刷新能恢复,这解释了为什么有三条重试路径(它们没有合并,见 §22.4) |
 | C7 | ~~「登录后刷新用户」从未被调用~~ | **已完成**(§19)。`App.vue` 启动时调 `fetchMe()`;它的 `catch` 不再 `logout()` —— 401 的反应归 session 独家拥有,而网络故障不该把人踢出去。两条断言都做了对照 |
 
 ## v5 候选(来自 2026-09-13 架构评审,8 个候选里已完成 8 个)
