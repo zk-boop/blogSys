@@ -23,6 +23,9 @@ Thumbs.db
 # Logs
 *.log
 
+# Browser automation artifacts (Playwright MCP writes snapshots here)
+.playwright-mcp/
+
 # Uploaded images
 backend/uploads/
 
