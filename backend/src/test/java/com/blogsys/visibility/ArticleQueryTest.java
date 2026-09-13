@@ -44,6 +44,8 @@ class ArticleQueryTest {
 
     @Mock
     private ArticleMapper articleMapper;
+    @Mock
+    private com.blogsys.mapper.CommentMapper commentMapper;
 
     @BeforeAll
     static void initTableInfo() {
@@ -53,7 +55,7 @@ class ArticleQueryTest {
     }
 
     private Visibility visibilityFor(Viewer viewer) {
-        return new DefaultVisibility(articleMapper, ViewerSource.fixed(viewer));
+        return new DefaultVisibility(articleMapper, commentMapper, ViewerSource.fixed(viewer));
     }
 
     /**
@@ -222,7 +224,7 @@ class ArticleQueryTest {
     void as_shouldRebindTheViewer() {
         when(articleMapper.selectList(any())).thenReturn(List.of());
 
-        Visibility rebindable = new DefaultVisibility(articleMapper, ViewerSource.fixed(Viewer.anonymous()));
+        Visibility rebindable = new DefaultVisibility(articleMapper, commentMapper, ViewerSource.fixed(Viewer.anonymous()));
         rebindable.as(Viewer.of(3L, true)).articles().list(5);
 
         ArgumentCaptor<Wrapper<Article>> captor = ArgumentCaptor.forClass(Wrapper.class);

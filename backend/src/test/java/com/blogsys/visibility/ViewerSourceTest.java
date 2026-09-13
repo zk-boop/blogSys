@@ -95,12 +95,16 @@ class ViewerSourceTest {
     }
 
     @Test
-    @DisplayName("权限令牌只能由模块签发:构造器不是 public")
-    void visibleArticle_cannotBeForgedFromOutside() throws NoSuchMethodException {
-        Constructor<VisibleArticle> ctor = VisibleArticle.class.getDeclaredConstructor(Article.class);
+    @DisplayName("权限令牌只能由模块签发:没有任何 public / protected 构造器")
+    void visibleArticle_cannotBeForgedFromOutside() {
+        Constructor<?>[] constructors = VisibleArticle.class.getDeclaredConstructors();
 
-        assertFalse(Modifier.isPublic(ctor.getModifiers()),
-                "构造器若为 public,模块外就能凭空造出「已验证可见」的文章");
-        assertFalse(Modifier.isProtected(ctor.getModifiers()));
+        assertTrue(constructors.length > 0, "前提:确实声明了构造器");
+        for (Constructor<?> ctor : constructors) {
+            assertFalse(Modifier.isPublic(ctor.getModifiers()),
+                    "构造器若为 public,模块外就能凭空造出「已验证可见」的文章: " + ctor);
+            assertFalse(Modifier.isProtected(ctor.getModifiers()),
+                    "protected 会给子类留口子,而这个令牌不该有任何签发旁路: " + ctor);
+        }
     }
 }

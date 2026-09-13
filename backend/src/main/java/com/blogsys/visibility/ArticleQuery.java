@@ -105,7 +105,7 @@ public final class ArticleQuery {
      */
     public VisibleArticle require(long articleId) {
         return find(articleId)
-                .map(VisibleArticle::new)
+                .map(article -> new VisibleArticle(article, viewer))
                 .orElseThrow(() -> new BizException(404, NOT_FOUND_MESSAGE));
     }
 

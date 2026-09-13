@@ -1,7 +1,13 @@
 package com.blogsys.visibility;
 
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.blogsys.common.UserStatus;
+import com.blogsys.entity.Comment;
 import com.blogsys.mapper.ArticleMapper;
+import com.blogsys.mapper.CommentMapper;
 import org.springframework.stereotype.Service;
+
+import java.util.List;
 
 /**
  * {@link Visibility} 的默认实现。
@@ -15,10 +21,12 @@ import org.springframework.stereotype.Service;
 public class DefaultVisibility implements Visibility {
 
     private final ArticleMapper articleMapper;
+    private final CommentMapper commentMapper;
     private final ViewerSource viewerSource;
 
-    public DefaultVisibility(ArticleMapper articleMapper, ViewerSource viewerSource) {
+    public DefaultVisibility(ArticleMapper articleMapper, CommentMapper commentMapper, ViewerSource viewerSource) {
         this.articleMapper = articleMapper;
+        this.commentMapper = commentMapper;
         this.viewerSource = viewerSource;
     }
 
@@ -27,8 +35,26 @@ public class DefaultVisibility implements Visibility {
         return new ArticleQuery(viewerSource.current(), articleMapper);
     }
 
+    /**
+     * 评论没有自己的状态字段:它可见 ⟺ 所属文章可见(由令牌保证)∧ 评论作者未被封禁。
+     *
+     * <p>用令牌里带的 viewer,而不是重新读一次环境 —— 读两次就可能拿到两个不同的 viewer,
+     * 那样文章规则与评论规则又会在同一处分歧。
+     */
+    @Override
+    public List<Comment> commentsOf(VisibleArticle article) {
+        LambdaQueryWrapper<Comment> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(Comment::getArticleId, article.id())
+                .orderByAsc(Comment::getCreatedAt);
+        if (!article.viewer().isAdmin()) {
+            wrapper.apply(true, "user_id IN (SELECT id FROM users WHERE status = {0})",
+                    UserStatus.ACTIVE.getValue());
+        }
+        return commentMapper.selectList(wrapper);
+    }
+
     @Override
     public Visibility as(Viewer viewer) {
-        return new DefaultVisibility(articleMapper, ViewerSource.fixed(viewer));
+        return new DefaultVisibility(articleMapper, commentMapper, ViewerSource.fixed(viewer));
     }
 }

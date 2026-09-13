@@ -13,6 +13,8 @@ import com.blogsys.mapper.ArticleMapper;
 import com.blogsys.mapper.CommentMapper;
 import com.blogsys.security.LoginUser;
 import com.blogsys.security.SecurityUtil;
+import com.blogsys.visibility.Visibility;
+import com.blogsys.visibility.VisibleArticle;
 import com.blogsys.vo.AdminCommentVO;
 import com.blogsys.vo.CommentVO;
 import com.blogsys.vo.UserBriefVO;
@@ -36,46 +38,14 @@ public class CommentService {
     private final CommentMapper commentMapper;
     private final ArticleMapper articleMapper;
     private final UserService userService;
+    private final Visibility visibility;
 
     public List<CommentVO> listByArticle(Long articleId) {
-        Article article = articleMapper.selectById(articleId);
-        if (article == null) {
-            throw new BizException(404, "文章不存在");
-        }
-        if (article.getStatus() != ArticleStatus.PUBLISHED.getValue()) {
-            if (!canViewDraft(article.getUserId())) {
-                throw new BizException(404, "文章不存在");
-            }
-            return List.of();
-        }
-        List<Comment> comments = commentMapper.selectList(
-                Wrappers.<Comment>lambdaQuery()
-                        .eq(Comment::getArticleId, articleId)
-                        .orderByAsc(Comment::getCreatedAt));
-        return buildTree(toVOs(filterBanned(comments)));
-    }
-
-    private List<Comment> filterBanned(List<Comment> comments) {
-        if (comments.isEmpty()) {
-            return comments;
-        }
-        List<Long> userIds = comments.stream().map(Comment::getUserId).distinct().toList();
-        Set<Long> banned = userService.findByIds(userIds).values().stream()
-                .filter(user -> Integer.valueOf(1).equals(user.getStatus()))
-                .map(User::getId)
-                .collect(Collectors.toSet());
-        return comments.stream()
-                .filter(comment -> !banned.contains(comment.getUserId()))
-                .toList();
-    }
-
-    private boolean canViewDraft(Long ownerId) {
-        try {
-            LoginUser loginUser = SecurityUtil.currentUser();
-            return loginUser.getId().equals(ownerId) || "ADMIN".equals(loginUser.getRole());
-        } catch (BizException e) {
-            return false;
-        }
+        // 草稿:作者与管理员现在拿到的是真实评论列表,而不是迁移前那个「200 + 空数组」——
+        // 那让草稿的评论区与「零评论」在客户端上无法区分。
+        // 被封禁作者的文章:非管理员一律 404,与详情页口径一致(此前这里是 200 + 评论树)。
+        VisibleArticle article = visibility.articles().includingOwnDrafts().require(articleId);
+        return buildTree(toVOs(visibility.commentsOf(article)));
     }
 
     public PageResult<AdminCommentVO> adminPage(long page, long size, String keyword) {

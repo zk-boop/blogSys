@@ -7,6 +7,10 @@ import com.blogsys.entity.Comment;
 import com.blogsys.mapper.ArticleMapper;
 import com.blogsys.mapper.CommentMapper;
 import com.blogsys.security.LoginUser;
+import com.blogsys.visibility.DefaultVisibility;
+import com.blogsys.visibility.Viewer;
+import com.blogsys.visibility.ViewerSource;
+import com.blogsys.visibility.Visibility;
 import com.blogsys.vo.CommentVO;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -40,7 +44,9 @@ class CommentServiceTest {
 
     @BeforeEach
     void setUp() {
-        commentService = new CommentService(commentMapper, articleMapper, userService);
+        Visibility visibility = new DefaultVisibility(articleMapper, commentMapper,
+                ViewerSource.fixed(Viewer.of(1L, false)));
+        commentService = new CommentService(commentMapper, articleMapper, userService, visibility);
         SecurityContextHolder.getContext().setAuthentication(
                 new UsernamePasswordAuthenticationToken(new LoginUser(1L, "alice", "USER"), null));
     }

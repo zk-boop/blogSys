@@ -1,5 +1,9 @@
 package com.blogsys.visibility;
 
+import com.blogsys.entity.Comment;
+
+import java.util.List;
+
 /**
  * 可见性模块的 interface。
  *
@@ -19,6 +23,17 @@ public interface Visibility {
      * 需要草稿的地方显式 {@link ArticleQuery#includingOwnDrafts()} 登记意向。
      */
     ArticleQuery articles();
+
+    /**
+     * 一篇文章的评论,按时间正序。
+     *
+     * <p>参数是{@link VisibleArticle 权限令牌}而不是一个 id:拿不到令牌就调不了这个方法,
+     * 于是「文章可见」与「它的评论可见」不可能在同一处分歧。
+     *
+     * <p>评论自己的规则只有一条:作者被封禁的评论对非管理员隐藏。
+     * 评论没有独立的状态字段 —— 它可见 ⟺ 所属文章可见 ∧ 评论作者未被封禁。
+     */
+    List<Comment> commentsOf(VisibleArticle article);
 
     /**
      * 绑定到一个显式 viewer。

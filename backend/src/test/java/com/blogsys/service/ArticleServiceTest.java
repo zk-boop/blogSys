@@ -94,7 +94,7 @@ class ArticleServiceTest {
     }
 
     private ArticleService serviceFor(Viewer viewer) {
-        Visibility visibility = new DefaultVisibility(articleMapper, ViewerSource.fixed(viewer));
+        Visibility visibility = new DefaultVisibility(articleMapper, commentMapper, ViewerSource.fixed(viewer));
         return new ArticleService(articleMapper, tagMapper, articleTagMapper, commentMapper,
                 likeMapper, favoriteMapper, userService, visibility);
     }
