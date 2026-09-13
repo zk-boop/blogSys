@@ -1264,5 +1264,68 @@ Node 的 ESM 解析器不做扩展名补全，而 Vite 会。仓库其余地方�
   只剩两处，且都在 `ArticleService`）。
 - C 节剩余：C3、C4。
 
+---
+
+## 24. C3：工具的契约与结果信封（2026-09-13）
+
+评审报告 C 节把这一项列成八条。本轮收掉其中**可判定的四项**，其余四条例在 24.4。
+
+### 24.1 收掉的四项
+
+| # | 此前 | 现在 |
+|---|---|---|
+| 1 | 参数强转被复制**三次**（两个工具各一份私有 `idOf`，一个内联同一逻辑） | `AbstractTool.requiredLong` 一处 |
+| 2 | schema 里**没有 `required`** | `AgentTool.requiredParameters()`（默认空）+ `ToolRegistry` 输出 `required`；三个需要 id 的工具声明它 |
+| 3 | 错误信封靠**字符串拼接** | `ObjectMapper` 构造 |
+| 4 | `ToolRegistry` 用 `Collectors.toMap`，重名抛一句 `Duplicate key` | 说清是谁重了；并保留注入顺序（发给模型的清单因此是确定的） |
+
+第 1 项的要点不是去掉重复，而是**失败时说的话**：模型漏传 id 时以前抛的是
+`Long.parseLong("null")` —— `For input string: "null"` 会原样进错误信封交给模型。
+模型看不懂它，也没办法据此改正。现在给「id 是必填参数」/「需要是一个整数，收到：…」。
+
+第 2 项的要点是**把失败从运行时挪到 schema**：没有 `required` 时，一次本该被 schema
+挡住的调用只能等到 Java 抛异常。
+
+第 3 项的要点最具体：驱动消息里**一个引号**就能造出坏 JSON，而那段 JSON 会作为 tool
+结果原样回到模型那里 —— **模型读到的是「未知工具」还是「语法错误」，取决于它自己
+刚才说了什么**。
+
+另收一条小的：`ChatMessage.toolResult(id, name, content)` 收下 `name` 就丢掉。
+OpenAI 的 tool 消息本来只有 `role`/`content`/`tool_call_id`（工具名靠 id 关联），
+所以那个参数是**累赘而不是遗漏** —— 删掉它，免得读代码的人以为它去了哪里。
+
+### 24.2 证据
+
+**自动化** 152 → 161（`ToolContractTest` 8 条：漏传/非整数两种说清楚的话、数字与数字
+字符串都收、三个工具声明 `required`、零参数工具不声明、`required` 真的出现在发出去的
+schema 里、没有必填就不带这个键、重名说清是谁；`ChatServiceTest` 加 1 条引号测试）。
+
+**对照**：把 `errorEnvelope` 恢复成字符串拼接，那条引号测试立刻红：
+
+```
+JsonParseException: Unexpected character ('这'): was expecting comma to separate Object entries
+```
+
+这正是报告描述的缺陷，而它此前**没有任何测试**。
+
+### 24.3 一处刻意的判断
+
+`requiredParameters()` 的默认值是**空列表**，而不是「把所有参数都当必填」。
+`SearchArticlesTool` 的 `keyword` 因此不算必填 —— 它现在缺省成空串并返回全量前几条，
+那是既有行为。把 `keyword` 改成必填是一次**行为变更**（模型不带关键词的搜索会开始报错），
+不是契约修复，所以没有顺手做。
+
+### 24.4 这一项还没收的四条
+
+- **截断出现两次，且都可能切在 JSON 字符串中间**（`ChatService` 截 4000、
+  `ArticleDetailTool` 截 2000）。切断一个 JSON 字符串会让那段「JSON」不再合法 ——
+  与 24.1 第 3 项是同一类问题，但改它要决定「截断后怎么才是合法 JSON」（是丢弃、
+  还是把尾巴补成合法结构），那是个新决定。
+- **`AbstractTool` 现在有了一个真正的成员**（`requiredLong`），但它依然不是抽象类意义上的
+  「模板」；`json()` 仍把序列化失败吞成假成功（`{"error":"结果序列化失败"}`）——
+  调用者无法察觉。改它要决定「序列化失败时工具该抛还是该返回错误信封」。
+- **`ChatStreamListener` 仍是假 seam**（§5.3，候选 07 记录）。
+- C 节剩余：C4（对话生命周期与取消）。
+
 
 
