@@ -74,6 +74,11 @@
 |---|---|---|
 | POST | `/api/ai/chat` | AI 对话(SSE 流式),body: `{messages: [{role, content}]}`,返回 `text/event-stream` |
 
+`messages` **最多 50 条**(超出是 400「历史消息过多」);服务端喂给模型的只有最近 20 条,
+所以浏览器端也只发最近 20 条(`chatHistory.js` 的 `OUTGOING_LIMIT`)—— 两边说的是同一件事。
+对话记录存在浏览器本地(`sessionStorage`,按用户区分,见 `architecture.md` §32),
+**服务端不保留任何历史**。
+
 SSE 事件类型 —— 这张表是**跨语言契约**:服务端的事件名与载荷形状由 `com.blogsys.ai.SseProtocol` 独家拥有(它的单测 `SseProtocolTest` 就是规格),浏览器端的解析器(`frontend/src/api/ai.js`)按同样的名字读。改名字必然是一次显式的、会让两侧测试都红掉的决定。
 
 | event | data | 说明 |
