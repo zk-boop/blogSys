@@ -167,7 +167,7 @@ POST /api/ai/chat (SSE)
               └─ 无工具调用 → 结束
 ```
 
-### 5.1 「全部只读」已被违反 【已实测】
+### 5.1 「全部只读」已被违反 【已实测】【已由 §11 修复】
 
 `docs/api.md:86` 声明工具「全部为只读操作」。实际上：
 
@@ -184,12 +184,15 @@ POST /api/ai/chat (SSE)
 
   → **鉴权只存在于 HTTP seam 上，不在 module 里。工具路径绕过了它。**
 
-### 5.2 身份缺失造成的静默错误答案
+### 5.2 身份缺失造成的静默错误答案 【已由 §11 修复】
 
 因为池线程上没有 principal，`SecurityUtil.currentUserId()` 会抛 401，而域层用 `catch → false` 把它吸收掉：
 
-- `ArticleService.java:204-206`（favorited）、`:213-215`（draft）→ **模型被告知「用户未收藏」**；
-- `ArticleService.java:402-404`（liked，写法不同，直接判 `auth == null`）→ **模型被告知「用户未点赞」**。
+- `ArticleService.isFavoritedByCurrentUser`（`SecurityUtil.currentUserId()` 抛 401 → `catch` 吸收）→ **模型被告知「用户未收藏」**；
+- `ArticleService.isLikedByCurrentUser`（写法不同，直接判 `auth == null` → `false`）→ **模型被告知「用户未点赞」**。
+
+（本节原先还列了第三处「draft」。那一处在可见性重构中被吸收进模块，见 §10.4，已不存在。
+原引用的 `:204-206`／`:213-215`／`:402-404` 也随 `ArticleService` 缩短而漂移，故改为按方法名指认。）
 
 这是**错误答案而不是错误** —— 这就是为什么它从不报错、也从不被发现。
 
@@ -424,6 +427,71 @@ AI 子系统在 `docs/api.md` 只有 6 行；而 `docs/lessons.md` 全文 63 行
 
 - **可见性语义没有数据库层的测试。** 谓词活在 SQL 里，而单测的 mapper 是 mock（不分 viewer 一律返回桩定的行）。当前保障是三段拼起来的：机制测试（绑定/括号化）＋ 谓词文本断言 ＋ **一次性真实数据核对（8 个用例逐条比对期望行集）**。真正缺的是一条能反复运行的 DB 层测试（H2 `MODE=MySQL` 或 Testcontainers），那需要一次显式的依赖决策。
 - **`restrictToVisibleArticles` 是模块唯一可被忘记的一环**（2 个调用点）。理由与代价写在它的 javadoc 里。
-- **D1/D2（AI 工具路径的身份与只读）** 仍需候选 02 —— 本次没有工具穿过模块去请求「谁在问」。
+- **D1/D2（AI 工具路径的身份与只读）** 已由 §11 修掉；本节这次（可见性重构）确实没有让工具穿过模块去请求「谁在问」。
+
+---
+
+## 11. AI 工具路径的身份与只读：结果（2026-09-13）
+
+候选 02。§5.1/§5.2 记的两个缺陷（D1 越权读取、D2 违反只读承诺）已修。下面是形态、证据与刻意不做的事。
+
+### 11.1 机制：两处，各管一层
+
+| 位置 | 做法 | 管什么 |
+|---|---|---|
+| `config/AiExecutorConfig` | `ThreadPoolTaskExecutor.setTaskDecorator` → `DelegatingSecurityContextRunnable(task, SecurityContextHolder.getContext())` | **域层**：池线程上的 `SecurityContextHolder` 变成提问者本人，于是 `visibility` 模块与 `SecurityUtil` 读到正确的人 |
+| `ai/ChatController` → `ai/ChatService` | 请求线程上用 `ViewerSource` 解出 `Viewer`，显式传进 `chatService.chat(...)` | **工具层**：工具清单、以及「这次调用要不要执行」，都由提问者算出来 |
+
+两处同源：都出自同一个请求线程上的同一次捕获，因此不可能分歧。
+
+事实核对：`DelegatingSecurityContextExecutor` 在 **`org.springframework.security.concurrent`**，不是 `task` 包（`task` 包只有 `DelegatingSecurityContextTaskExecutor` / `…AsyncTaskExecutor`）；`spring-security-core` 已在 classpath，**没有新增依赖**。不用 `DelegatingSecurityContextAsyncTaskExecutor` 包装整个池：那会让 `ThreadPoolTaskExecutor` 不再是 bean，从而失去 Spring 的 destroy 回调。
+
+全后端只有**一处**跨线程跳（`ChatController:47`），所以这一处补上就够了 —— 没有 `@Async`、`@Scheduled`、其它 `Executor` bean。
+
+### 11.2 授权只有一个收口点
+
+`ToolRegistry.definitions(viewer)` **没有无参重载** —— 与 `visibility.articles()` 同一个道理：调用方拿到清单时过滤已经在了，忘不掉。`AgentTool.isAvailableTo(Viewer)` 默认 `true`（站内文章、用户公开资料本就是公开语料），只有 `getSiteStats` 覆盖成 `viewer.isAdmin()`。
+
+清单过滤只是 UX：模型可以凭空说出一个它没被给过的工具名。所以强制在 `ChatService.executeTool` 做第二次判定，并且「不可用」与「不存在」返回**逐字相同**的答复 —— 稍有差别就是「这儿有个你不能用的能力」的预言机。
+
+`AdminService.stats()` 的计数**仍是原始汇报值**（§10.5 第 2 条），只是现在只有管理员问得到。
+
+### 11.3 D2 靠结构修，不靠参数
+
+`incrViewCount` 从 `ArticleService.detail` 移出，成为 `recordView(id)`；HTTP 层 `ArticleController.detail` 先调它、再读详情。
+
+选结构而非法 `readonly` 标志：**读操作里不再有写，所以没有任何标志需要传错。** 标志方案总有被漏传的一天，而漏传的失败方向恰好是「写了」—— 不可接受的那一侧。
+
+顺序是「先写后读」而不是反过来，为的是响应里的 `viewCount` 含本次，与拆分前逐字一致（有测试钉住）。
+
+### 11.4 证据
+
+**自动化** 94 → 111 个测试。新增的三处正是这次的核心：
+
+- `config/AiExecutorConfigTest` —— 用**真实线程池**证明身份跟过去了（不是断言某段配置文本存在，那种断言在 TaskDecorator 被挪走后仍然会过）。含一条**对照**测试（裸池会丢身份），用来证明前一条断言不是空转；以及一条「池线程被复用时不会带走上一个人的身份」。
+- `ai/tool/ToolRegistryTest` —— 用**真实的** `SiteStatsTool`，不是 mock：mock 的 `isAvailableTo` 默认 `false`，拿它断言「普通用户看不到」等于什么也没说。
+- `controller/ArticleControllerTest` —— 用 `InOrder` 钉住「先 `recordView` 再 `detail`」。
+
+**实测**（本地 MySQL；探针账号 id=11，事后已删除，`view_count` 已复原）：
+
+| 探针 | 修前 | 修后 |
+|---|---|---|
+| 探针账号直接打 `GET /api/admin/stats` | 403 | 403（未变） |
+| 同一个账号问 AI「全站有多少文章/用户/评论」 | 答出完整全站统计 | 整个流里**没有一个 `tool` 帧**；答「暂不支持全局统计」 |
+| **管理员**问同一句话 | —— | `getSiteStats` 工具帧出现，答出 5 篇 / 5 位 / 10 条 |
+| 探针账号问 AI「查看 id=17 的文章详情」 | `view_count` 6 → 7 | 工具返回 `viewCount:10`，库里**仍是 10** |
+| `GET /api/articles/17`（HTTP 路径） | +1，响应含本次 | +1，响应含本次（未变） |
+| 探针账号问 AI 查 admin 的草稿（id=16） | 不存在 | `{"error":"文章不存在"}` —— 与真不存在逐字相同 |
+| **管理员**问同一篇草稿 | 不存在 | 返回完整草稿对象（管理员豁免生效） |
+
+最后两行是「身份真的到达了**域层**」的判别性证据：同一篇文章、同一个工具、同一个问题，只有提问者不同，结果就不同。修之前两者都会退化成匿名 —— 那时连管理员问自己的草稿都会得到「不存在」。
+
+### 11.5 刻意不做 / 仍未覆盖
+
+- **D8/D9（`OpenAiClient` 帧解析与 SSE 契约）没碰。** 它们长在「整个测试套件里一帧都没被解析过」的地方，要修得先给 `OpenAiClient` 建测试面 —— 那是候选 06/07 的目标，与本段的失败模式不同。
+- **`AgentTool.execute(Map)` 的签名没改。** 既然全后端只有一处跨线程跳（§11.1），而 `execute` 的唯一调用点就是 `ChatService.executeTool`，授权在那里收口即可；给 5 个用不到 viewer 的工具各加一个参数只是噪声。真需要时再改，改动是机械的。
+- **§4.3（viewer 是被接受的依赖）只做了一半。** 工具层是显式的；域层仍走 `ViewerSource` 这个环境入口 —— 那是模块自己的设计（§10.1：它是模块读环境的**唯一**入口），现在由 TaskDecorator 喂正确的值。「全链路显式传参」没做，也不该塞进本段。
+- **DB 层测试仍缺。** §10.6 说那需要一次显式的依赖决策，本次把依赖事实查清了，因而**明确不做**：Docker 守护进程未运行（`docker version`/`info`/`ps` 全部 exit 1），Testcontainers 现在跑不了；H2 本机只有 2.1.214 / 2.2.224 / 2.4.240，而 Boot 3.4.1 的 BOM 钉的是**不在本机**的 2.3.232（不写 `<version>` 就离线失败）；`docs/schema.sql` 对 H2 `MODE=MySQL` 还有 3 处确认的硬阻塞（`CREATE DATABASE`、库级 `DEFAULT CHARACTER SET`、内联 `ON UPDATE CURRENT_TIMESTAMP` ×2）。
+- **AI 内核的取消与生命周期（§5.5）未动。**
 
 

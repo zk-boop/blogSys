@@ -83,7 +83,13 @@ SSE 事件类型:
 | `done` | `{}` | 对话结束 |
 | `error` | `{message}` | 出错(如未配置 `AI_API_KEY`) |
 
-Agent 可用工具:`searchArticles(keyword)`、`getArticleDetail(id)`、`getUserProfile(userId)`、`getSiteStats()`、`getHotArticles()`、`recommendArticles(articleId)`,全部为只读操作。
+Agent 可用工具:`searchArticles(keyword)`、`getArticleDetail(id)`、`getUserProfile(userId)`、`getHotArticles()`、`recommendArticles(articleId)`、`getSiteStats()`。
+
+**全部为只读**,且这一条现在由构造保证:`getArticleDetail` 走的 `ArticleService.detail` 里没有任何写操作 —— 记浏览是 HTTP 层在 `GET /api/articles/{id}` 上单独调 `recordView` 做的。AI 查一次详情不会改变浏览量(因而不会把自己问过的文章顶进热门榜)。
+
+**`getSiteStats()` 只对管理员开放。** 非管理员的工具清单里根本不会出现它;即使模型凭空说出这个名字,得到的答复也与「未知工具」逐字相同 —— 不给出「这儿有个你不能用的能力」这个信号。
+
+工具清单按提问者计算,可见性规则(草稿、封禁作者、管理员豁免)与 HTTP 接口完全同一口径。
 
 ## 相关推荐(公开)
 
