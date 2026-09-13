@@ -2,9 +2,8 @@ package com.blogsys.controller;
 
 import com.blogsys.entity.Article;
 import com.blogsys.entity.User;
-import com.blogsys.mapper.ArticleMapper;
 import com.blogsys.mapper.UserMapper;
-import com.baomidou.mybatisplus.core.toolkit.Wrappers;
+import com.blogsys.visibility.Visibility;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -20,16 +19,18 @@ public class RssController {
     private static final String SITE_URL = "http://localhost:8080";
     private static final DateTimeFormatter RFC822 = DateTimeFormatter.ofPattern("EEE, dd MMM yyyy HH:mm:ss Z");
 
-    private final ArticleMapper articleMapper;
     private final UserMapper userMapper;
+    private final Visibility visibility;
 
     @GetMapping(value = "/rss", produces = MediaType.APPLICATION_RSS_XML_VALUE)
     public String rss() {
-        List<Article> articles = articleMapper.selectList(
-                Wrappers.<Article>lambdaQuery()
-                        .eq(Article::getStatus, 1)
-                        .orderByDesc(Article::getCreatedAt)
-                        .last("LIMIT 20"));
+        // 迁移前这里只过滤 status,从不检查作者是否被封禁 ——
+        // 被封禁作者的文章仍在公开订阅源里,而订阅源是公开面最大的出口:
+        // 读者一旦订阅过,内容就留在别人的阅读器里,事后封禁追不回来。
+        // 订阅源不发送 Authorization,所以 viewer 自然是匿名的 —— 这正是想要的结果。
+        List<Article> articles = visibility.articles()
+                .orderByDesc(Article::getCreatedAt)
+                .list(20);
         StringBuilder xml = new StringBuilder();
         xml.append("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
         xml.append("<rss version=\"2.0\"><channel>\n");
