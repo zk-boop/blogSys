@@ -1,23 +1,6 @@
-import { useUserStore } from '../stores/user'
-import router from '../router'
-import http from './http'
+import { session } from '../session-instance'
 
 const API_BASE = '/api'
-
-function authHeaders() {
-  const store = useUserStore()
-  const headers = { 'Content-Type': 'application/json' }
-  if (store.token) {
-    headers.Authorization = `Bearer ${store.token}`
-  }
-  return headers
-}
-
-function handleUnauthorized() {
-  const store = useUserStore()
-  store.logout()
-  router.push('/login')
-}
 
 /**
  * AI 对话(SSE 流式,需 fetch 直读流,无法走 axios)。
@@ -31,13 +14,13 @@ export function aiChatStream(messages, { onTool, onMessage, onDone, onError }) {
     try {
       const res = await fetch(`${API_BASE}/ai/chat`, {
         method: 'POST',
-        headers: authHeaders(),
+        headers: { 'Content-Type': 'application/json', ...session.authHeaders() },
         body: JSON.stringify({ messages }),
         signal: controller.signal,
       })
       if (res.status === 401) {
-        handleUnauthorized()
-        onError?.('登录已过期,请重新登录')
+        // 401 反应与 axios 那侧同一个归属;这里只是换了个把它说给用户听的通道
+        onError?.(session.unauthorized())
         return
       }
       if (!res.ok) {
@@ -90,8 +73,4 @@ function dispatch(event, data, handlers) {
   } else if (event === 'error' && payload.message) {
     handlers.onError?.(payload.message)
   }
-}
-
-export const recommendApi = {
-  byArticle: (id, size = 5) => http.get(`/articles/${id}/recommend`, { params: { size } }),
 }

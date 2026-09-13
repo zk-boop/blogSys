@@ -2,9 +2,9 @@
 import { ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { commentApi } from '../api'
+import { session } from '../session-instance'
 import { useUserStore } from '../stores/user'
 import { avatarSrc } from '../utils/avatar'
-import { useRouter } from 'vue-router'
 
 const props = defineProps({
   comment: { type: Object, required: true },
@@ -13,7 +13,6 @@ const props = defineProps({
 const emit = defineEmits(['delete', 'refresh'])
 
 const store = useUserStore()
-const router = useRouter()
 
 const replying = ref(false)
 const replyText = ref('')
@@ -27,11 +26,7 @@ const shownReplies = () => {
 }
 
 function startReply(comment) {
-  if (!store.isLoggedIn) {
-    ElMessage.warning('请先登录')
-    router.push('/login')
-    return
-  }
+  if (!session.requireLogin()) return
   replyingTo.value = comment
   replyText.value = ''
   replying.value = true

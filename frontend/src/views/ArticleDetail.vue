@@ -2,8 +2,8 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { articleApi, commentApi, likeApi } from '../api'
-import { recommendApi } from '../api/ai'
+import { articleApi, commentApi, likeApi, recommendApi } from '../api'
+import { session } from '../session-instance'
 import { useUserStore } from '../stores/user'
 import { renderMarkdown, extractToc } from '../utils/markdown'
 import { avatarSrc } from '../utils/avatar'
@@ -48,11 +48,7 @@ async function loadRecommendations() {
 }
 
 async function toggleLike() {
-  if (!store.isLoggedIn) {
-    ElMessage.warning('请先登录')
-    router.push('/login')
-    return
-  }
+  if (!session.requireLogin()) return
   liking.value = true
   try {
     const data = await likeApi.toggle(articleId.value)
@@ -64,11 +60,7 @@ async function toggleLike() {
 }
 
 async function toggleFavorite() {
-  if (!store.isLoggedIn) {
-    ElMessage.warning('请先登录')
-    router.push('/login')
-    return
-  }
+  if (!session.requireLogin()) return
   const data = await articleApi.favorite(articleId.value)
   favorited.value = data.favorited
   ElMessage.success(data.favorited ? '已收藏' : '已取消收藏')
@@ -112,13 +104,6 @@ const canDeleteArticle = computed(
 
 const canDeleteComment = (comment) =>
   store.isLoggedIn && (store.isAdmin || comment.user?.id === store.user?.id)
-
-function loginRequired() {
-  if (store.isLoggedIn) return true
-  ElMessage.warning('请先登录')
-  router.push('/login')
-  return false
-}
 
 function jumpTo(id) {
   document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })

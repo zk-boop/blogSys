@@ -39,6 +39,15 @@ export const tagApi = {
   list: () => http.get('/tags'),
 }
 
+/**
+ * 相关推荐是普通 REST 调用,所以它在这里 ——
+ * 此前它长在 `api/ai.js`(那个 module 存在的原因是 SSE 需要 fetch 直读流),
+ * 只是为了蹭一句 `import http`。
+ */
+export const recommendApi = {
+  byArticle: (id, size = 5) => http.get(`/articles/${id}/recommend`, { params: { size } }),
+}
+
 export const adminApi = {
   stats: () => http.get('/admin/stats'),
   users: (params) => http.get('/admin/users', { params }),

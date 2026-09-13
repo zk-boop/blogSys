@@ -1,5 +1,6 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { useUserStore } from '../stores/user'
+import { session } from '../session-instance'
 
 const routes = [
   { path: '/', name: 'home', component: () => import('../views/Home.vue') },
@@ -34,7 +35,8 @@ const router = createRouter({
 router.beforeEach((to) => {
   const store = useUserStore()
   if (to.meta.requiresAuth && !store.isLoggedIn) {
-    return { name: 'login', query: { redirect: to.fullPath } }
+    // 跳转目标归 session。守卫此前是唯一带了 redirect 的地方,现在这条规则只有一个主人。
+    return session.loginTarget(to.fullPath)
   }
   if (to.meta.requiresAdmin && !store.isAdmin) {
     return { name: 'home' }
