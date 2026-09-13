@@ -1,14 +1,16 @@
 <script setup>
 import { onBeforeUnmount, onMounted, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { ElMessageBox } from 'element-plus'
 import { useUserStore } from './stores/user'
 import { avatarSrc } from './utils/avatar'
 import { applyTheme, getTheme } from './utils/theme'
 import { onModuleLoadError } from './router'
+import { outletKey } from './router/identity'
 
 const store = useUserStore()
 const router = useRouter()
+const route = useRoute()
 const keyword = ref('')
 const progress = ref(0)
 const theme = ref(getTheme())
@@ -127,7 +129,12 @@ onBeforeUnmount(() => window.removeEventListener('scroll', onScroll))
     </div>
     <router-view v-else v-slot="{ Component }">
       <transition name="fade-slide" mode="out-in">
-        <component :is="Component" />
+        <!--
+          :key 是 D7 的修法。没有它,同一个 route record 下只有 params 变化时
+          (/article/1 → /article/2)Vue 会复用实例,URL 变了正文不变。
+          标识怎么算、为什么按 outlet 层级算,见 router/identity.js。
+        -->
+        <component :is="Component" :key="outletKey(route)" />
       </transition>
     </router-view>
   </main>

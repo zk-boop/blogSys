@@ -19,14 +19,10 @@ const loading = ref(true)
 
 const keyword = ref(route.query.keyword || '')
 
-watch(
-  () => route.query.keyword,
-  (value) => {
-    keyword.value = value || ''
-    page.value = 1
-    loadArticles()
-  }
-)
+// 这里原先有一条 watch(() => route.query.keyword) 的补偿:outlet 没有 key,于是
+// ?keyword= 变化不会重挂载本视图,只能自己监听、自己重置页码、自己重查。
+// 现在 App.vue 的 outlet 带上了 route identity(query 参与标识),本视图在搜索时会
+// 被重新挂载 —— 下面这两行的初始化即等价于原来那条 watcher,而它已经删掉了。
 
 const maxTagCount = computed(() => {
   if (!tags.value.length) return 1
