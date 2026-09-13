@@ -1,0 +1,1060 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>blogSys 架构评审 — deepening opportunities</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script type="module">
+      import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
+      mermaid.initialize({ startOnLoad: true, theme: "neutral", securityLevel: "loose", flowchart: { curve: "basis" } });
+    </script>
+    <style>
+      .seam { stroke-dasharray: 5 5; }
+      .deep { background: linear-gradient(135deg, #0f172a, #1e293b); }
+      .label { font-size: .625rem; letter-spacing: .1em; text-transform: uppercase; }
+      .mermaid { display: flex; justify-content: center; }
+      code.k { background:#f1f5f9; padding:.05rem .3rem; border-radius:.25rem; font-size:.8125rem; }
+      .rule { border-left: 3px solid #0f172a; }
+    </style>
+  </head>
+  <body class="bg-stone-50 text-slate-900 font-sans antialiased">
+    <main class="max-w-5xl mx-auto px-6 py-12 space-y-14">
+
+      <!-- ═══════════  HEADER  ═══════════ -->
+      <header class="space-y-6">
+        <div class="flex items-baseline justify-between flex-wrap gap-2">
+          <h1 class="font-serif text-4xl tracking-tight">blogSys 架构评审</h1>
+          <p class="text-sm text-slate-500">2026-09-13 · master @ <code class="k">1721796</code> + 1 处未提交改动</p>
+        </div>
+        <p class="text-slate-600 max-w-3xl">
+          deepening opportunities — 把 shallow module 变成 deep module 的重构候选。
+          scope 由 40 次提交的改动热点决定：改得最多的地方，就是深化回报最高的地方。
+        </p>
+
+        <div class="grid sm:grid-cols-4 gap-3 text-xs">
+          <div class="rounded-lg border border-slate-200 bg-white p-3">
+            <div class="label text-slate-400 mb-1">Legend</div>
+            <div class="flex items-center gap-2 mb-1"><span class="inline-block w-4 h-4 border-2 border-slate-800 rounded-sm"></span> module</div>
+            <div class="flex items-center gap-2 mb-1"><svg width="16" height="8"><line x1="0" y1="4" x2="16" y2="4" class="seam" stroke="#64748b" stroke-width="2"/></svg> seam</div>
+            <div class="flex items-center gap-2 mb-1"><svg width="16" height="8"><line x1="0" y1="4" x2="16" y2="4" stroke="#dc2626" stroke-width="2"/></svg> leakage</div>
+            <div class="flex items-center gap-2"><span class="inline-block w-4 h-4 deep rounded-sm"></span> deep module</div>
+          </div>
+          <div class="rounded-lg border border-slate-200 bg-white p-3">
+            <div class="label text-slate-400 mb-1">规模</div>
+            <div>后端 3,859 行 / 测试 768 行</div>
+            <div>前端 src 4,266 行</div>
+            <div>28 个测试（实跑全绿）</div>
+          </div>
+          <div class="rounded-lg border border-slate-200 bg-white p-3">
+            <div class="label text-slate-400 mb-1">热点</div>
+            <div><code class="k">ArticleService</code> 429 行 · 10 commits</div>
+            <div><code class="k">ArticleDetail.vue</code> 458 行 · 11</div>
+            <div><code class="k">App.vue</code> 10 · <code class="k">ArticleCard</code> 10</div>
+          </div>
+          <div class="rounded-lg border border-slate-200 bg-white p-3">
+            <div class="label text-slate-400 mb-1">词汇</div>
+            <div class="text-slate-500 leading-relaxed">module · interface · depth<br/>seam · adapter<br/>leverage · locality</div>
+          </div>
+        </div>
+
+        <div class="rule bg-white rounded-r-lg border border-l-0 border-slate-200 p-4 text-sm text-slate-700">
+          <span class="font-semibold">贯穿全篇的一条判断：</span>
+          平台有三条核心业务规则 —— 内容可见性、身份与所有者判定、已发布才可见 ——
+          被以 3–4 种不同机制散落在 7–9 个地方重复表达，而每条规则本身<strong>没有对应的 module</strong>。
+          这不是整洁度问题：重复已经产生了可观察的错误行为（见下表），
+          而「只读」这条对外承诺也已经被代码违反。
+        </div>
+      </header>
+
+      <!-- ═══════════  A. 已确认缺陷  ═══════════ -->
+      <section id="defects" class="space-y-5">
+        <div class="flex items-baseline gap-3">
+          <h2 class="font-serif text-2xl">A · 已确认的缺陷</h2>
+          <span class="text-xs text-slate-500">先修这些。每条都定位到 file:line，不是猜测</span>
+        </div>
+
+        <div class="rounded-xl border border-red-200 overflow-hidden">
+          <table class="w-full text-sm">
+            <thead class="bg-red-50 text-red-900 text-xs">
+              <tr>
+                <th class="text-left px-4 py-2 font-medium w-10">#</th>
+                <th class="text-left px-4 py-2 font-medium">缺陷</th>
+                <th class="text-left px-4 py-2 font-medium">位置</th>
+                <th class="text-left px-4 py-2 font-medium w-20">严重度</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-red-100 bg-white">
+              <tr>
+                <td class="px-4 py-3 text-slate-400 font-mono text-xs">D1</td>
+                <td class="px-4 py-3">
+                  <div class="font-medium">AI 工具路径能读到 ADMIN 专属数据</div>
+                  <div class="text-xs text-slate-600 mt-1">AI 会话跑在线程池上，没有 principal；<code class="k">getSiteStats</code> 直接调 <code class="k">adminService.stats()</code>。HTTP 层 <code class="k">GET /api/admin/stats</code> 是 ADMIN-only，但任何已登录用户都能通过 AI 拿到同一份全站统计。鉴权只在 HTTP seam 上，不在 module 里。</div>
+                </td>
+                <td class="px-4 py-3 font-mono text-xs text-slate-600">SiteStatsTool.java:35<br/>SecurityConfig.java:50<br/>AdminController.java:36-38</td>
+                <td class="px-4 py-3">
+                  <span class="text-xs px-2 py-0.5 rounded-full bg-red-200 text-red-900 font-medium">高</span>
+                  <div class="text-xs text-red-700 mt-1 font-medium">已实测</div>
+                </td>
+              </tr>
+              <tr>
+                <td class="px-4 py-3 text-slate-400 font-mono text-xs">D2</td>
+                <td class="px-4 py-3">
+                  <div class="font-medium">「全部只读」的承诺被代码违反，且写入反噬排序</div>
+                  <div class="text-xs text-slate-600 mt-1"><code class="k">docs/api.md:86</code> 声明工具全部只读，但 <code class="k">getArticleDetail</code> → <code class="k">detail()</code> 里有 <code class="k">incrViewCount</code>。浏览量又是 <code class="k">getHotArticles</code> 的排序依据 —— <strong>AI 会把自己问出来的文章加热</strong>。</div>
+                </td>
+                <td class="px-4 py-3 font-mono text-xs text-slate-600">ArticleDetailTool.java:45<br/>ArticleService.java:130<br/>ArticleService.java:93-102</td>
+                <td class="px-4 py-3">
+                  <span class="text-xs px-2 py-0.5 rounded-full bg-red-200 text-red-900 font-medium">高</span>
+                  <div class="text-xs text-red-700 mt-1 font-medium">已实测</div>
+                </td>
+              </tr>
+              <tr>
+                <td class="px-4 py-3 text-slate-400 font-mono text-xs">D3</td>
+                <td class="px-4 py-3">
+                  <div class="font-medium">被封禁作者的文章仍在公开 RSS 里</div>
+                  <div class="text-xs text-slate-600 mt-1">「封禁用户内容下线」那次提交覆盖了 7 个面，唯独漏了 RSS —— 它只过滤 status。顺带：这里写的是字面量 <code class="k">1</code> 而不是 <code class="k">ArticleStatus.PUBLISHED</code>。</div>
+                </td>
+                <td class="px-4 py-3 font-mono text-xs text-slate-600">RssController.java:28-32</td>
+                <td class="px-4 py-3"><span class="text-xs px-2 py-0.5 rounded-full bg-red-200 text-red-900 font-medium">高</span></td>
+              </tr>
+              <tr>
+                <td class="px-4 py-3 text-slate-400 font-mono text-xs">D4</td>
+                <td class="px-4 py-3">
+                  <div class="font-medium">管理员能打开被封禁作者的文章，却看不到它的评论</div>
+                  <div class="text-xs text-slate-600 mt-1">提交信息承诺「管理员仍可见」，但只有详情页实现了管理员豁免；列表的 <code class="k">inSql</code> 与 <code class="k">filterBanned</code> 都没有 admin 分支。同一份豁免在 7 个读取路径上各自为政。</div>
+                </td>
+                <td class="px-4 py-3 font-mono text-xs text-slate-600">ArticleService.java:127<br/>vs :63 · :173-178<br/>CommentService.java:55</td>
+                <td class="px-4 py-3"><span class="text-xs px-2 py-0.5 rounded-full bg-amber-200 text-amber-900 font-medium">中</span></td>
+              </tr>
+              <tr>
+                <td class="px-4 py-3 text-slate-400 font-mono text-xs">D5</td>
+                <td class="px-4 py-3">
+                  <div class="font-medium">标签云统计了永远不会出现在列表里的文章</div>
+                  <div class="text-xs text-slate-600 mt-1"><code class="k">selectList(null)</code> 把草稿和封禁作者的文章都算进去，于是标签计数虚高；删除确认弹窗还把这个虚高数字念给管理员听。</div>
+                </td>
+                <td class="px-4 py-3 font-mono text-xs text-slate-600">TagService.java:29<br/>Home.vue:148<br/>admin/Tags.vue:40</td>
+                <td class="px-4 py-3"><span class="text-xs px-2 py-0.5 rounded-full bg-amber-200 text-amber-900 font-medium">中</span></td>
+              </tr>
+              <tr>
+                <td class="px-4 py-3 text-slate-400 font-mono text-xs">D6</td>
+                <td class="px-4 py-3">
+                  <div class="font-medium">收藏列表先分页后过滤，页内条数少于 size、total 虚高</div>
+                  <div class="text-xs text-slate-600 mt-1">先 <code class="k">subList(from, to)</code> 取切片，再过滤封禁作者，而 <code class="k">total</code> 用的是过滤前的 <code class="k">favorites.size()</code>。它也是全库唯一绕过 <code class="k">selectPage</code> 的列表。</div>
+                </td>
+                <td class="px-4 py-3 font-mono text-xs text-slate-600">ArticleService.java:168-178</td>
+                <td class="px-4 py-3"><span class="text-xs px-2 py-0.5 rounded-full bg-amber-200 text-amber-900 font-medium">中</span></td>
+              </tr>
+              <tr>
+                <td class="px-4 py-3 text-slate-400 font-mono text-xs">D7</td>
+                <td class="px-4 py-3">
+                  <div class="font-medium">点「相关推荐」→ URL 变了，正文还是旧文章</div>
+                  <div class="text-xs text-slate-600 mt-1">outlet 无 <code class="k">:key</code>，ArticleDetail 无 <code class="k">watch</code> 且只在 <code class="k">onMounted</code> 加载 —— 同 route record 复用实例。UserProfile 同病。Write 编辑模式更严重：<code class="k">onMounted</code> 注册了两次，每次挂载发两遍 <code class="k">editDetail</code>。</div>
+                </td>
+                <td class="px-4 py-3 font-mono text-xs text-slate-600">App.vue:128-132<br/>ArticleDetail.vue:146-151,232-244<br/>Write.vue:125,178</td>
+                <td class="px-4 py-3"><span class="text-xs px-2 py-0.5 rounded-full bg-amber-200 text-amber-900 font-medium">中</span></td>
+              </tr>
+              <tr>
+                <td class="px-4 py-3 text-slate-400 font-mono text-xs">D8</td>
+                <td class="px-4 py-3">
+                  <div class="font-medium">上游错误帧被静默丢弃 → 空回答且无错误事件</div>
+                  <div class="text-xs text-slate-600 mt-1">解析器对 <code class="k">choices</code> 缺失的帧直接 return，包括 OpenAI 形状的 <code class="k">{"error":…}</code>（限流、内容过滤）。流随后读到 EOF，<code class="k">finished</code> 保持 false，用户收到一个 <code class="k">done</code> 和一片空白，没有任何错误提示。</div>
+                </td>
+                <td class="px-4 py-3 font-mono text-xs text-slate-600">OpenAiClient.java:97-100<br/>:140-142 · ChatService.java:83-85</td>
+                <td class="px-4 py-3"><span class="text-xs px-2 py-0.5 rounded-full bg-amber-200 text-amber-900 font-medium">中</span></td>
+              </tr>
+              <tr>
+                <td class="px-4 py-3 text-slate-400 font-mono text-xs">D9</td>
+                <td class="px-4 py-3">
+                  <div class="font-medium">零参数工具调用可能被整个丢掉</div>
+                  <div class="text-xs text-slate-600 mt-1">「是否有工具调用」是从 <em>参数分片</em> 推断的：<code class="k">if (finished &amp;&amp; !callArgs.isEmpty())</code>。参数为空或不带 arguments 的 delta 会被重分类为「没有工具调用」，而助手消息里也不含这个调用 —— 模型永远不知道它被跳过了。而零参数工具恰好就是 <code class="k">getSiteStats</code> 与 <code class="k">getHotArticles</code>。</div>
+                </td>
+                <td class="px-4 py-3 font-mono text-xs text-slate-600">OpenAiClient.java:116-119,128<br/>SiteStatsTool.java:29-31<br/>HotArticlesTool.java:31-33</td>
+                <td class="px-4 py-3"><span class="text-xs px-2 py-0.5 rounded-full bg-amber-200 text-amber-900 font-medium">中</span></td>
+              </tr>
+              <tr>
+                <td class="px-4 py-3 text-slate-400 font-mono text-xs">D10</td>
+                <td class="px-4 py-3">
+                  <div class="font-medium">聊到 25 轮左右会撞上一堵说不出原因的墙</div>
+                  <div class="text-xs text-slate-600 mt-1">三个地方各自限制历史长度且互相矛盾：<code class="k">@Size(max=50)</code> 超了返回 400、<code class="k">MAX_HISTORY=20</code> 静默丢最老消息、而前端在 400 时<strong>丢弃了响应体</strong>只显示「AI 服务错误，请稍后重试」。</div>
+                </td>
+                <td class="px-4 py-3 font-mono text-xs text-slate-600">ChatController.java:58<br/>ChatService.java:42-43<br/>api/ai.js:43-46</td>
+                <td class="px-4 py-3"><span class="text-xs px-2 py-0.5 rounded-full bg-slate-200 text-slate-700 font-medium">低</span></td>
+              </tr>
+              <tr>
+                <td class="px-4 py-3 text-slate-400 font-mono text-xs">D11</td>
+                <td class="px-4 py-3">
+                  <div class="font-medium">缺失的静态资源返回 500 而不是 404</div>
+                  <div class="text-xs text-slate-600 mt-1">兜底 <code class="k">@ExceptionHandler(Exception.class)</code> 吞掉了 <code class="k">NoResourceFoundException</code>。本次启动验证中实测复现：<code class="k">GET /uploads/nonexistent.png</code> → 500 + 完整堆栈进日志。</div>
+                </td>
+                <td class="px-4 py-3 font-mono text-xs text-slate-600">GlobalExceptionHandler.java:49-53</td>
+                <td class="px-4 py-3"><span class="text-xs px-2 py-0.5 rounded-full bg-slate-200 text-slate-700 font-medium">低</span></td>
+              </tr>
+              <tr>
+                <td class="px-4 py-3 text-slate-400 font-mono text-xs">D12</td>
+                <td class="px-4 py-3">
+                  <div class="font-medium">同一搜索框，两个接口对 <code class="k">%</code> <code class="k">_</code> 行为不一致</div>
+                  <div class="text-xs text-slate-600 mt-1"><code class="k">escapeLike</code> 只被前台 <code class="k">page</code> 调用；后台 <code class="k">adminPage</code> 用的是未转义关键词。</div>
+                </td>
+                <td class="px-4 py-3 font-mono text-xs text-slate-600">ArticleService.java:75 vs :109-111</td>
+                <td class="px-4 py-3"><span class="text-xs px-2 py-0.5 rounded-full bg-slate-200 text-slate-700 font-medium">低</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <p class="text-sm text-slate-600">
+          D1–D3 值得单独说明：它们不是「代码不整洁」，而是<strong>对外行为已经错了</strong>。
+          D1 是越权读取，D2 让 AI 的只读承诺失效并污染自己的推荐依据，D3 让封禁功能在最不该漏的出口上漏了。
+        </p>
+      </section>
+
+      <!-- ═══════════  B. 候选  ═══════════ -->
+      <section id="candidates" class="space-y-12">
+        <div class="flex items-baseline gap-3">
+          <h2 class="font-serif text-2xl">B · 深化候选</h2>
+          <span class="text-xs text-slate-500">修 D1–D12 是止血；这些才是让同类缺陷不再复发</span>
+        </div>
+
+        <!-- ══════════ 1 ══════════ -->
+        <article id="c1" class="rounded-xl border border-slate-200 bg-white p-6 space-y-6">
+          <div class="flex items-start justify-between gap-4 flex-wrap">
+            <h2 class="font-serif text-2xl">01 · 把内容可见性收敛成一个 module</h2>
+            <div class="flex gap-2 shrink-0">
+              <span class="text-xs px-2 py-1 rounded-full bg-emerald-100 text-emerald-800 font-medium">Strong</span>
+              <span class="text-xs px-2 py-1 rounded-full bg-slate-100 text-slate-600">in-process</span>
+            </div>
+          </div>
+          <div class="font-mono text-xs text-slate-500 leading-relaxed">
+            ArticleService.java · CommentService.java · RecommendService.java · UserService.java · TagService.java · UserController.java · RssController.java
+          </div>
+
+          <div class="rounded-lg bg-red-50 border border-red-200 p-3 text-sm text-red-900">
+            <span class="font-semibold">它已经产生了四个可观察的错误行为：</span>
+            D3（RSS 完全没过滤）、D4（管理员看到的评论不一致）、D5（标签计数虚高）、D6（先分页后过滤）。
+            这条规则的唯一「规格说明」是一次提交标题。
+          </div>
+
+          <div class="grid md:grid-cols-2 gap-6 items-start">
+            <div>
+              <div class="label text-slate-400 mb-1">Before · 一条规则，四种形状，八个读者</div>
+              <div class="rounded-lg border border-slate-200 bg-stone-50 p-3">
+                <pre class="mermaid">
+flowchart TB
+  page["page / hot"] -->|"原始 SQL"| sql["ACTIVE_USERS_SQL<br/>status = 0"]
+  detail["detail"] -->|"逐行判定 + isAdmin"| chk["isAuthorBanned"]
+  fav["favoritesPage"] -->|"过滤在分页之后"| set["bannedUserIdsOf"]
+  rec["recommend"] --> cp["bannedUserIdsOf<br/>逐字复制"]
+  cmt["comments"] --> cp2["filterBanned<br/>第三份"]
+  prof["user profile"] --> fx["调一次取数<br/>只为它的副作用"]
+  tag["tag counts"] --> none[" "]
+  rss["RSS"] --> none
+  classDef leak stroke:#dc2626,stroke-width:2px,fill:#fef2f2;
+  class sql,chk,set,cp,cp2,fx leak
+  classDef miss stroke:#dc2626,stroke-dasharray:4 4,fill:#fff;
+  class none fill:none,stroke:none;
+                </pre>
+              </div>
+              <p class="text-xs text-slate-500 mt-2 text-center">红框 = 各自为政的表达；右下两条路径根本没有规则</p>
+            </div>
+            <div>
+              <div class="label text-slate-400 mb-1">After · 所有读路径穿过同一个 module</div>
+              <div class="rounded-lg border border-slate-200 bg-stone-50 p-4 flex flex-col items-center justify-center" style="min-height:300px">
+                <div class="grid grid-cols-4 gap-1.5 text-xs w-full">
+                  <div class="px-1 py-1.5 rounded border border-slate-300 bg-white font-mono text-center">page</div>
+                  <div class="px-1 py-1.5 rounded border border-slate-300 bg-white font-mono text-center">hot</div>
+                  <div class="px-1 py-1.5 rounded border border-slate-300 bg-white font-mono text-center">detail</div>
+                  <div class="px-1 py-1.5 rounded border border-slate-300 bg-white font-mono text-center">fav</div>
+                  <div class="px-1 py-1.5 rounded border border-slate-300 bg-white font-mono text-center">cmt</div>
+                  <div class="px-1 py-1.5 rounded border border-slate-300 bg-white font-mono text-center">rec</div>
+                  <div class="px-1 py-1.5 rounded border border-slate-300 bg-white font-mono text-center">prof</div>
+                  <div class="px-1 py-1.5 rounded border border-slate-300 bg-white font-mono text-center">RSS</div>
+                </div>
+                <svg width="100%" height="30"><line x1="50%" y1="0" x2="50%" y2="20" stroke="#0f172a" stroke-width="2"/><path d="M-5 18 L0 28 L5 18" fill="#0f172a" transform="translate(50%,0)"/></svg>
+                <div class="deep text-white rounded-lg px-5 py-4 text-center shadow-lg w-64">
+                  <div class="label opacity-60 mb-1">deep module</div>
+                  <div class="font-semibold">content-visibility</div>
+                  <div class="text-xs opacity-70 mt-2 leading-relaxed">可见性规则 · 唯一归属</div>
+                  <div class="mt-3 pt-3 border-t border-white/20 text-xs opacity-70 space-y-1 font-mono">
+                    visibleArticles(query, viewer)<br/>canSee(article, viewer)
+                  </div>
+                </div>
+                <p class="text-xs text-slate-500 mt-3 text-center">没有任何 module 再含 user-status 比较、<br/>content 的 isAdmin 分支、或 canViewDraft 副本</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="grid md:grid-cols-2 gap-6 text-sm">
+            <div class="space-y-2">
+              <p><span class="font-semibold">Problem：</span>「谁可以看见这篇文章或评论」没有 module，于是 7 条读取路径各用不同形状重新推导它，并且已经相互背离。</p>
+              <p><span class="font-semibold">Solution：</span>把「给定浏览者的文章与评论可见性」收进一个 module，让首页、搜索、热门、详情、主页、评论、收藏、推荐、RSS、标签计数全部穿过它。</p>
+            </div>
+            <div>
+              <div class="label text-slate-400 mb-2">Wins</div>
+              <ul class="text-sm space-y-1 text-slate-700">
+                <li>· locality：规则只在一个 module</li>
+                <li>· 一次修改命中全部读路径</li>
+                <li>· 管理员豁免处处一致</li>
+                <li>· 标签计数与列表结果对齐</li>
+                <li>· 手写 SQL 子查询消失</li>
+                <li>· 无测试的规则变得可测</li>
+              </ul>
+            </div>
+          </div>
+
+          <details class="text-sm">
+            <summary class="cursor-pointer text-slate-500 hover:text-slate-800">证据（含重复的来历）</summary>
+            <div class="mt-3 space-y-2 text-slate-600 font-mono text-xs bg-stone-50 rounded-lg p-4 leading-relaxed">
+              <div><span class="text-slate-400">原始 SQL</span> ArticleService.java:57 → 用于 :63（首页+搜索）、:97（热门）</div>
+              <div><span class="text-slate-400">逐行判定</span> ArticleService.java:193-196 isAuthorBanned ← :127 detail，带 <code>&amp;&amp; !SecurityUtil.isAdmin()</code></div>
+              <div><span class="text-slate-400">逐字复制 ×3</span> ArticleService.java:182-191 ≡ RecommendService.java:115-121 ≡（评论版）CommentService.java:58-70</div>
+              <div><span class="text-slate-400">重复的来历</span> <code>git show --stat c9fa9f5</code>：4 个文件 +42/-2 覆盖 7 个面；而 RecommendService 的那份是在<strong>下一个提交</strong> 0c0a940 里靠复制粘贴进来的</div>
+              <div><span class="text-slate-400">为副作用取数</span> UserController.java:65 <code>userService.publicProfile(id);</code> —— 返回值被丢弃，这一行就是「主页过滤」的全部实现；pageByUser 自身没有规则</div>
+              <div><span class="text-slate-400">另一半规则也重复</span> canViewDraft 在 ArticleService.java:209-216 与 CommentService.java:72-79 逐字相同</div>
+              <div><span class="text-slate-400">覆盖</span> 四份副本里只有一份有测试（RecommendServiceTest.java:126-136）；ArticleService 完全没有测试文件</div>
+            </div>
+          </details>
+        </article>
+
+        <!-- ══════════ 2 ══════════ -->
+        <article id="c2" class="rounded-xl border border-slate-200 bg-white p-6 space-y-6">
+          <div class="flex items-start justify-between gap-4 flex-wrap">
+            <h2 class="font-serif text-2xl">02 · 让「谁在问、只读」穿过异步 seam</h2>
+            <div class="flex gap-2 shrink-0">
+              <span class="text-xs px-2 py-1 rounded-full bg-emerald-100 text-emerald-800 font-medium">Strong</span>
+              <span class="text-xs px-2 py-1 rounded-full bg-slate-100 text-slate-600">in-process</span>
+            </div>
+          </div>
+          <div class="font-mono text-xs text-slate-500 leading-relaxed">
+            ai/ChatController.java:47-49 · ai/tool/ArticleDetailTool.java:45 · ai/tool/SiteStatsTool.java:35 · security/SecurityUtil.java:12-18 · service/ArticleService.java:130,198-216,400-404
+          </div>
+
+          <div class="rounded-lg bg-red-50 border-2 border-red-300 p-4 text-sm text-red-900 space-y-2">
+            <div class="font-semibold">两条指控均已在运行中的服务上实测复现（不是推断）：</div>
+            <div class="font-mono text-xs bg-white/70 rounded p-3 space-y-2 leading-relaxed">
+              <div>
+                <span class="font-sans font-semibold text-red-800">D1 越权 · </span>
+                注册一个全新 USER 账号 → <code>GET /api/admin/stats</code> 得到 <strong>403</strong>（符合预期）；<br/>
+                同一账号问 AI「全站有多少文章/用户/评论」→ AI 调用 <code>getSiteStats</code>，<strong>答出了全站统计</strong>，<br/>
+                还报出「今日新增 <strong>1</strong> 位用户」—— 正是刚注册的那个探针账号。<strong>同一份数据，一条路禁、一条路通。</strong>
+              </div>
+              <div>
+                <span class="font-sans font-semibold text-red-800">D2 写入 · </span>
+                以普通用户请 AI「查看 id=17 的文章详情」→ AI 调用 <code>getArticleDetail</code>；<br/>
+                文章 17 的 <code>view_count</code> 由 <strong>6 → 7</strong>，<strong>全程没有人类打开过页面</strong>。
+              </div>
+            </div>
+            <div class="text-xs">
+              探针账号与浏览量已复原（用户数回到 4，<code>view_count</code> 回到 6）。取证细节见 <code>docs/architecture.md</code> §5.1。
+            </div>
+          </div>
+
+          <div class="grid md:grid-cols-2 gap-6 items-start">
+            <div>
+              <div class="label text-slate-400 mb-1">Before · 身份在线程切换处蒸发</div>
+              <div class="rounded-lg border border-slate-200 bg-stone-50 p-4 space-y-2" style="min-height:300px">
+                <div class="rounded border-2 border-slate-800 bg-white px-3 py-2 text-xs">
+                  <div class="font-mono">servlet 线程</div>
+                  <div class="text-emerald-700">JwtAuthFilter 在这里放 principal ✓</div>
+                </div>
+                <div class="text-center">
+                  <svg width="100%" height="34"><line x1="50%" y1="0" x2="50%" y2="24" stroke="#dc2626" stroke-width="2" stroke-dasharray="4 3"/><text x="52%" y="16" class="label" fill="#dc2626">startAsync + execute → 身份丢失</text></svg>
+                </div>
+                <div class="rounded border-2 border-red-400 bg-red-50 px-3 py-2 text-xs">
+                  <div class="font-mono">ai-chat-N 线程池</div>
+                  <div class="text-red-700">SecurityContextHolder 为空</div>
+                </div>
+                <div class="grid grid-cols-2 gap-2 pt-1">
+                  <div class="rounded border border-red-300 bg-white px-2 py-2 text-xs">
+                    <div class="font-mono text-red-700">currentUserId() → throw 401</div>
+                    <div class="text-slate-500 mt-1">域层用 <code>catch → false</code> 吞掉</div>
+                  </div>
+                  <div class="rounded border border-red-300 bg-white px-2 py-2 text-xs">
+                    <div class="font-mono text-red-700">adminService.stats()</div>
+                    <div class="text-slate-500 mt-1">无任何检查，直接放行</div>
+                  </div>
+                </div>
+                <div class="rounded border border-red-300 bg-white px-2 py-2 text-xs">
+                  <div class="font-mono text-red-700">incrViewCount(id) ← 写操作仍然落库</div>
+                </div>
+                <p class="text-xs text-slate-500">身份没了，写入还在；而「只读」只是文档里的一句话</p>
+              </div>
+            </div>
+            <div>
+              <div class="label text-slate-400 mb-1">After · 上下文显式跨越 seam</div>
+              <div class="rounded-lg border border-slate-200 bg-stone-50 p-4 space-y-2" style="min-height:300px">
+                <div class="rounded border-2 border-slate-800 bg-white px-3 py-2 text-xs">
+                  <div class="font-mono">servlet 线程</div>
+                  <div class="text-emerald-700">解析出 caller，交给执行上下文</div>
+                </div>
+                <div class="text-center">
+                  <svg width="100%" height="34"><line x1="50%" y1="0" x2="50%" y2="24" stroke="#0f172a" stroke-width="2"/><path d="M-5 22 L0 32 L5 22" fill="#0f172a" transform="translate(50%,0)"/></svg>
+                </div>
+                <div class="deep text-white rounded-lg px-4 py-3 text-center">
+                  <div class="label opacity-60 mb-1">deep module</div>
+                  <div class="font-semibold text-sm">execution context</div>
+                  <div class="text-xs opacity-70 mt-1 font-mono">caller · read-only intent</div>
+                </div>
+                <div class="text-center">
+                  <svg width="100%" height="34"><line x1="50%" y1="0" x2="50%" y2="24" stroke="#0f172a" stroke-width="2"/><path d="M-5 22 L0 32 L5 22" fill="#0f172a" transform="translate(50%,0)"/></svg>
+                </div>
+                <div class="rounded border-2 border-slate-800 bg-white px-3 py-2 text-xs">
+                  <div class="font-mono">execute(ctx, args)</div>
+                  <div class="text-emerald-700">工具拿到的 caller 就是 HTTP 层的 caller</div>
+                  <div class="text-slate-500 mt-1">域层读操作无副作用 ⇒ 无写可漏</div>
+                </div>
+                <p class="text-xs text-slate-500">D1 与 D2 同时消失，且「只读」第一次成为可断言的性质</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="grid md:grid-cols-2 gap-6 text-sm">
+            <div class="space-y-2">
+              <p><span class="font-semibold">Problem：</span>工具路径跑在没有 principal 的线程池上，于是每个依赖身份的读都静默退化成「匿名」，而这条路径上唯一的写（浏览量 +1）照样落库 —— 「只读」这条承诺没有任何地方在执行、也没有任何 interface 能观察到它。</p>
+              <p><span class="font-semibold">Solution：</span>让 AI 内核持有一个显式执行上下文，把提问者与只读意图从 controller 带进每一次工具调用；同时让工具使用的域层读操作真正无副作用，不再靠环境 ThreadLocal 猜身份。</p>
+            </div>
+            <div>
+              <div class="label text-slate-400 mb-2">Wins</div>
+              <ul class="text-sm space-y-1 text-slate-700">
+                <li>· caller 身份有了唯一归属</li>
+                <li>· 只读意图变得可断言</li>
+                <li>· 静默匿名兜底消失</li>
+                <li>· 浏览量写入不再藏起来</li>
+                <li>· 工具权限与 HTTP 权限一致</li>
+                <li>· 域层不再靠 ThreadLocal 猜</li>
+              </ul>
+            </div>
+          </div>
+
+          <details class="text-sm">
+            <summary class="cursor-pointer text-slate-500 hover:text-slate-800">证据</summary>
+            <div class="mt-3 space-y-2 text-slate-600 font-mono text-xs bg-stone-50 rounded-lg p-4 leading-relaxed">
+              <div>ChatController.java:47-49 —— <code>chatExecutor.execute(...)</code>；:36 startAsync；:37 <code>setTimeout(0L)</code></div>
+              <div>全库没有 <code>DelegatingSecurityContextExecutor</code>、没有 <code>WebAsyncManager</code> callable、没有策略覆写 ⇒ 上下文不传播</div>
+              <div>引信：<code>SecurityUtil.currentUserId()</code> 在无 principal 时抛 401（SecurityUtil.java:13-17）</div>
+              <div>两处域层靠说谎吸收它：ArticleService.java:204-206（favorited）、:213-215（draft）；第三处写法不同：:402-404（liked，直接判 auth == null）—— 模型被<strong>告知用户未点赞/未收藏</strong>，是错误答案而不是错误。这就是为什么它从不报错。</div>
+              <div>写操作：ArticleDetailTool.java:45 → ArticleService.java:130 <code>articleMapper.incrViewCount(id)</code>；而 :93-102 的 hot 以 viewCount 排序 ⇒ AI 加热自己的榜单</div>
+              <div>Authority 在 HTTP seam 上而不在 module 里：SecurityConfig.java:50 / AdminController.java:36-38 要求 ADMIN，SiteStatsTool.java:35 直接调同一方法</div>
+            </div>
+          </details>
+        </article>
+
+        <!-- ══════════ 3 ══════════ -->
+        <article id="c3" class="rounded-xl border border-slate-200 bg-white p-6 space-y-6">
+          <div class="flex items-start justify-between gap-4 flex-wrap">
+            <h2 class="font-serif text-2xl">03 · 让 router outlet 携带 route identity</h2>
+            <div class="flex gap-2 shrink-0">
+              <span class="text-xs px-2 py-1 rounded-full bg-emerald-100 text-emerald-800 font-medium">Strong</span>
+              <span class="text-xs px-2 py-1 rounded-full bg-slate-100 text-slate-600">in-process</span>
+            </div>
+          </div>
+          <div class="font-mono text-xs text-slate-500 leading-relaxed">
+            App.vue:128-132 · ArticleDetail.vue · UserProfile.vue · Write.vue · Home.vue
+          </div>
+
+          <div class="rounded-lg bg-red-50 border border-red-200 p-3 text-sm text-red-900">
+            <span class="font-semibold">D7 的根因。</span>
+            outlet 无 <code class="k">:key</code>，<code class="k">/article/A → /article/B</code> 沿用同一实例，
+            于是 URL 更新而正文不动。在意的 view 只能各自发明 watcher 补偿 —— 而全库只有 Home 补了。
+          </div>
+
+          <div class="grid md:grid-cols-2 gap-6">
+            <div>
+              <div class="label text-slate-400 mb-1">Before</div>
+              <div class="rounded-lg border border-slate-200 bg-stone-50 p-4 space-y-3" style="min-height:280px">
+                <div class="rounded border-2 border-slate-800 bg-white px-3 py-2 text-center text-xs font-mono">App.vue outlet · 无 identity</div>
+                <div class="text-center text-xs text-slate-400">同 route record ⇒ 复用实例</div>
+                <svg width="100%" height="24"><line x1="50%" y1="0" x2="50%" y2="16" stroke="#64748b" stroke-width="2"/><path d="M-4 14 L0 22 L4 14" fill="#64748b" transform="translate(50%,0)"/></svg>
+                <div class="grid grid-cols-3 gap-2 text-xs">
+                  <div class="rounded border-2 border-slate-800 bg-white px-2 py-3 text-center font-mono">ArticleDetail<br/><span class="text-red-600">无 watch</span></div>
+                  <div class="rounded border-2 border-slate-800 bg-white px-2 py-3 text-center font-mono">UserProfile<br/><span class="text-red-600">无 watch</span></div>
+                  <div class="rounded border-2 border-slate-800 bg-white px-2 py-3 text-center font-mono">Write<br/><span class="text-red-600">onMounted ×2</span></div>
+                </div>
+                <div class="rounded border-2 border-dashed border-amber-500 bg-amber-50 px-3 py-2 text-center text-xs font-mono">Home.vue<br/><span class="text-amber-700">自己补了 watch 补偿</span></div>
+                <div class="text-xs text-slate-500 text-center">一个局部解法，其余 8 个 module 各假定一次「不会变」</div>
+              </div>
+            </div>
+            <div>
+              <div class="label text-slate-400 mb-1">After</div>
+              <div class="rounded-lg border border-slate-200 bg-stone-50 p-4 space-y-3" style="min-height:280px">
+                <div class="deep text-white rounded px-3 py-2 text-center text-xs font-mono">App.vue outlet<br/><span class="opacity-70">:key = route identity</span></div>
+                <div class="text-center text-xs text-slate-400">param 变化 ⇒ 新实例</div>
+                <svg width="100%" height="24"><line x1="50%" y1="0" x2="50%" y2="16" stroke="#0f172a" stroke-width="2"/><path d="M-4 14 L0 22 L4 14" fill="#0f172a" transform="translate(50%,0)"/></svg>
+                <div class="grid grid-cols-3 gap-2 text-xs">
+                  <div class="rounded border-2 border-slate-800 bg-white px-2 py-3 text-center font-mono">ArticleDetail<br/><span class="text-emerald-600">onMounted 原样</span></div>
+                  <div class="rounded border-2 border-slate-800 bg-white px-2 py-3 text-center font-mono">UserProfile<br/><span class="text-emerald-600">onMounted 原样</span></div>
+                  <div class="rounded border-2 border-slate-800 bg-white px-2 py-3 text-center font-mono">Write<br/><span class="text-emerald-600">去掉重复 onMounted</span></div>
+                </div>
+                <div class="rounded border-2 border-dashed border-slate-300 bg-white px-3 py-2 text-center text-xs font-mono text-slate-400 line-through">Home.vue 的补偿 watch</div>
+                <div class="text-xs text-slate-500 text-center">identity 归属一处</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="grid md:grid-cols-2 gap-6 text-sm">
+            <div class="space-y-2">
+              <p><span class="font-semibold">Problem：</span>outlet 渲染匹配到的 module 却不带 identity，同名路由的 param 变化复用实例，页面停在旧数据。</p>
+              <p><span class="font-semibold">Solution：</span>在 outlet 一处决定 route identity，让 param 变化重挂载 view，从而删掉那些只为补偿而存在的 per-view watcher。</p>
+            </div>
+            <div>
+              <div class="label text-slate-400 mb-2">Wins</div>
+              <ul class="text-sm space-y-1 text-slate-700">
+                <li>· 陈旧内容变得不可能</li>
+                <li>· 删掉 Home 的补偿 watcher</li>
+                <li>· Write 编辑不再发两次请求</li>
+                <li>· identity 归属一处</li>
+                <li>· view 不再需要路由 watcher</li>
+                <li>· 重挂载规则可测</li>
+              </ul>
+            </div>
+          </div>
+
+          <details class="text-sm">
+            <summary class="cursor-pointer text-slate-500 hover:text-slate-800">证据（已逐条复核）</summary>
+            <div class="mt-3 space-y-2 text-slate-600 font-mono text-xs bg-stone-50 rounded-lg p-4 leading-relaxed">
+              <div>App.vue:128-132 —— <code>&lt;router-view v-slot&gt;&lt;component :is /&gt;</code> 无 <code>:key</code>；App.vue:3 只取 useRouter，全文无 useRoute</div>
+              <div>ArticleDetail.vue:2 引入 <code>computed, onBeforeUnmount, onMounted, ref</code> —— <span class="text-red-600">无 watch</span>；:146-151 仅 onMounted 加载；:232-244 却渲染自跳转链接</div>
+              <div>UserProfile.vue —— watch 0 次；:61 渲染 ArticleCard，其作者链接（ArticleCard.vue:26）指向另一个 <code>/user/:id</code></div>
+              <div>Write.vue —— <span class="text-red-600">onMounted 注册于 :125 与 :178</span></div>
+              <div>Home.vue:22-29 —— 全库唯一用 watch 监听 route.query.keyword 做补偿的 view</div>
+            </div>
+          </details>
+        </article>
+
+        <!-- ══════════ 4 ══════════ -->
+        <article id="c4" class="rounded-xl border border-slate-200 bg-white p-6 space-y-6">
+          <div class="flex items-start justify-between gap-4 flex-wrap">
+            <h2 class="font-serif text-2xl">04 · 把 6 个 view 各自手搓的分页切片收成一个 deep module</h2>
+            <div class="flex gap-2 shrink-0">
+              <span class="text-xs px-2 py-1 rounded-full bg-emerald-100 text-emerald-800 font-medium">Strong</span>
+              <span class="text-xs px-2 py-1 rounded-full bg-slate-100 text-slate-600">local-substitutable</span>
+            </div>
+          </div>
+          <div class="font-mono text-xs text-slate-500 leading-relaxed">
+            Home.vue · UserProfile.vue · Profile.vue · admin/Users.vue · admin/Articles.vue · admin/Comments.vue · admin/Tags.vue · api/http.js
+          </div>
+
+          <div class="grid md:grid-cols-2 gap-6 items-start">
+            <div>
+              <div class="label text-slate-400 mb-1">Before · mass diagram</div>
+              <div class="rounded-lg border border-slate-200 bg-stone-50 p-4" style="min-height:290px">
+                <div class="flex items-end justify-center gap-3" style="height:230px">
+                  <div class="flex flex-col items-center gap-1"><div class="w-9 bg-red-400 rounded-t" style="height:120px"></div><div class="w-9 bg-slate-700 rounded-b" style="height:26px"></div><div class="text-xs font-mono">Home</div></div>
+                  <div class="flex flex-col items-center gap-1"><div class="w-9 bg-red-400 rounded-t" style="height:112px"></div><div class="w-9 bg-slate-700 rounded-b" style="height:30px"></div><div class="text-xs font-mono">Profile</div></div>
+                  <div class="flex flex-col items-center gap-1"><div class="w-9 bg-red-400 rounded-t" style="height:110px"></div><div class="w-9 bg-slate-700 rounded-b" style="height:24px"></div><div class="text-xs font-mono">UserProfile</div></div>
+                  <div class="flex flex-col items-center gap-1"><div class="w-9 bg-red-400 rounded-t" style="height:118px"></div><div class="w-9 bg-slate-700 rounded-b" style="height:28px"></div><div class="text-xs font-mono">Users</div></div>
+                  <div class="flex flex-col items-center gap-1"><div class="w-9 bg-red-400 rounded-t" style="height:116px"></div><div class="w-9 bg-slate-700 rounded-b" style="height:26px"></div><div class="text-xs font-mono">Articles</div></div>
+                  <div class="flex flex-col items-center gap-1"><div class="w-9 bg-red-400 rounded-t" style="height:114px"></div><div class="w-9 bg-slate-700 rounded-b" style="height:26px"></div><div class="text-xs font-mono">Comments</div></div>
+                </div>
+                <div class="flex justify-center gap-4 mt-3 text-xs text-slate-500">
+                  <span class="flex items-center gap-1"><span class="w-3 h-3 bg-red-400 inline-block rounded-sm"></span>请求状态 interface</span>
+                  <span class="flex items-center gap-1"><span class="w-3 h-3 bg-slate-700 inline-block rounded-sm"></span>真正的视图逻辑</span>
+                </div>
+                <p class="text-center text-xs text-slate-500 mt-1">interface 几乎和 implementation 一样高 = shallow</p>
+              </div>
+            </div>
+            <div>
+              <div class="label text-slate-400 mb-1">After · mass diagram</div>
+              <div class="rounded-lg border border-slate-200 bg-stone-50 p-4" style="min-height:290px">
+                <div class="flex items-end justify-center gap-3" style="height:230px">
+                  <div class="flex flex-col items-center gap-1"><div class="w-9 bg-emerald-500 rounded-t" style="height:24px"></div><div class="w-9 bg-slate-700 rounded-b" style="height:122px"></div><div class="text-xs font-mono">Home</div></div>
+                  <div class="flex flex-col items-center gap-1"><div class="w-9 bg-emerald-500 rounded-t" style="height:24px"></div><div class="w-9 bg-slate-700 rounded-b" style="height:118px"></div><div class="text-xs font-mono">Profile</div></div>
+                  <div class="flex flex-col items-center gap-1"><div class="w-9 bg-emerald-500 rounded-t" style="height:24px"></div><div class="w-9 bg-slate-700 rounded-b" style="height:110px"></div><div class="text-xs font-mono">UserProfile</div></div>
+                  <div class="flex flex-col items-center gap-1"><div class="w-9 bg-emerald-500 rounded-t" style="height:24px"></div><div class="w-9 bg-slate-700 rounded-b" style="height:122px"></div><div class="text-xs font-mono">Users</div></div>
+                  <div class="flex flex-col items-center gap-1"><div class="w-9 bg-emerald-500 rounded-t" style="height:24px"></div><div class="w-9 bg-slate-700 rounded-b" style="height:120px"></div><div class="text-xs font-mono">Articles</div></div>
+                  <div class="flex flex-col items-center gap-1"><div class="w-9 bg-emerald-500 rounded-t" style="height:24px"></div><div class="w-9 bg-slate-700 rounded-b" style="height:118px"></div><div class="text-xs font-mono">Comments</div></div>
+                  <div class="flex flex-col items-center justify-end gap-1"><div class="deep rounded px-1 py-2 text-white text-xs text-center" style="writing-mode:vertical-rl;height:146px">list module</div></div>
+                </div>
+                <div class="flex justify-center gap-4 mt-3 text-xs text-slate-500">
+                  <span class="flex items-center gap-1"><span class="w-3 h-3 bg-emerald-500 inline-block rounded-sm"></span>请求状态 interface</span>
+                  <span class="flex items-center gap-1"><span class="w-3 h-3 bg-slate-700 inline-block rounded-sm"></span>真正的视图逻辑</span>
+                </div>
+                <p class="text-center text-xs text-slate-500 mt-1">view 只留请求调用与文案</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="rounded-lg bg-red-50 border border-red-200 p-3 text-sm text-red-900">
+            <span class="font-semibold">用户可见后果：</span>15 个 view 里只有 1 个 <code class="k">catch</code>，<strong>零个错误态</strong>；
+            而 <code class="k">http.js</code> 已经弹过 toast 并 reject。请求失败时 <code class="k">loading</code> 清掉、数组仍是 <code class="k">[]</code>，
+            首页于是渲染「还没有文章，快来写第一篇吧」并附上号召按钮（Home.vue:102-106）。
+            <strong>「请求失败」在当前架构里不可表达。</strong>
+          </div>
+
+          <div class="grid md:grid-cols-2 gap-6 text-sm">
+            <div class="space-y-2">
+              <p><span class="font-semibold">Problem：</span>6 个 view 各自持有一份相同的请求状态，failure 无法表达，渲染成「没有数据」。</p>
+              <p><span class="font-semibold">Solution：</span>把 page/size/keyword/loading/failure/total 与 records-and-total 拆包收到一个 deep module 之后，view 只提供自己的请求调用与空态文案。</p>
+            </div>
+            <div>
+              <div class="label text-slate-400 mb-2">Wins</div>
+              <ul class="text-sm space-y-1 text-slate-700">
+                <li>· 失败态从 0 处变为 1 处</li>
+                <li>· loading/empty/failure 可区分</li>
+                <li>· 请求状态离开 view module</li>
+                <li>· 只通过 interface 即可测试</li>
+                <li>· 每个 view 一个 adapter</li>
+                <li>· 修 bug 不再逐个 view 抄</li>
+              </ul>
+            </div>
+          </div>
+
+          <details class="text-sm">
+            <summary class="cursor-pointer text-slate-500 hover:text-slate-800">证据（重复量已逐处核对）</summary>
+            <div class="mt-3 space-y-2 text-slate-600 font-mono text-xs bg-stone-50 rounded-lg p-4 leading-relaxed">
+              <div>状态五元组 × 6：Home.vue:14-18 · UserProfile.vue:14-17 · Profile.vue:18-20 · admin/Users.vue:8-12 · admin/Articles.vue:10-15 · admin/Comments.vue:9-13</div>
+              <div>loadX() 函数体 × 7：Home.vue:44-58 · UserProfile.vue:23-32 · admin/Tags.vue:12-19 · admin/Users.vue:14-27 · admin/Articles.vue:17-31 · admin/Comments.vue:15-28 · Profile.vue:35-45</div>
+              <div>search() = page=1 + reload × 3：admin/Users.vue:29-32 · admin/Articles.vue:33-36 · admin/Comments.vue:30-33</div>
+              <div>分页块逐字相同 × 6：Home.vue:109-117 · UserProfile.vue:65-74 · Profile.vue:114-123 · admin/Users.vue:121-130 · admin/Articles.vue:109-118 · admin/Comments.vue:87-96</div>
+              <div>破坏性操作（confirm → 请求 → toast → reload）× 8：ArticleDetail.vue:94-99,101-107 · Profile.vue:57-62 · admin/Users.vue:34-40,42-49 · admin/Articles.vue:38-43 · admin/Comments.vue:35-40 · admin/Tags.vue:38-47</div>
+              <div class="text-slate-500">http.js 的错误形状本身不一致：业务错误 reject <code>new Error(res.message)</code>（:29，无 .response），HTTP 错误 reject 原始 axios error（:42）</div>
+            </div>
+          </details>
+        </article>
+
+        <!-- ══════════ 5 ══════════ -->
+        <article id="c5" class="rounded-xl border border-slate-200 bg-white p-6 space-y-6">
+          <div class="flex items-start justify-between gap-4 flex-wrap">
+            <h2 class="font-serif text-2xl">05 · 让 session 只有一个归属</h2>
+            <div class="flex gap-2 shrink-0">
+              <span class="text-xs px-2 py-1 rounded-full bg-emerald-100 text-emerald-800 font-medium">Strong</span>
+              <span class="text-xs px-2 py-1 rounded-full bg-slate-100 text-slate-600">ports &amp; adapters</span>
+            </div>
+          </div>
+          <div class="font-mono text-xs text-slate-500 leading-relaxed">
+            api/http.js · api/ai.js · router/index.js · ArticleDetail.vue · CommentItem.vue
+          </div>
+
+          <div class="grid md:grid-cols-2 gap-6 items-start">
+            <div>
+              <div class="label text-slate-400 mb-1">Before · 7 处可以重定向</div>
+              <div class="rounded-lg border border-slate-200 bg-stone-50 p-3">
+                <pre class="mermaid">
+flowchart LR
+  ax["http.js<br/>axios adapter"] -->|"logout + push"| login["/login"]
+  ft["ai.js<br/>fetch adapter"] -->|"logout + push"| login
+  rt["router 守卫"] -->|push| login
+  v1["ArticleDetail · like"] -->|push| login
+  v2["ArticleDetail · favorite"] -->|push| login
+  v3["loginRequired · 死代码"] -->|push| login
+  v4["CommentItem"] -->|push| login
+  classDef leak stroke:#dc2626,stroke-width:2px,fill:#fef2f2;
+  class v3 leak
+                </pre>
+              </div>
+            </div>
+            <div>
+              <div class="label text-slate-400 mb-1">After · 两个真 adapter，一个 seam</div>
+              <div class="rounded-lg border border-slate-200 bg-stone-50 p-4 flex flex-col items-center justify-center" style="min-height:280px">
+                <div class="deep text-white rounded-lg px-5 py-4 text-center shadow-lg w-52">
+                  <div class="label opacity-60 mb-1">seam</div>
+                  <div class="font-semibold">session</div>
+                  <div class="text-xs opacity-70 mt-2 leading-relaxed">token · 401 反应 · 跳转目标</div>
+                </div>
+                <svg width="220" height="30"><line x1="110" y1="0" x2="110" y2="22" stroke="#0f172a" stroke-width="2"/><path d="M106 20 L110 28 L114 20" fill="#0f172a"/></svg>
+                <div class="flex gap-3 text-xs">
+                  <div class="rounded border-2 border-slate-800 bg-white px-3 py-2 text-center font-mono">axios<br/>adapter</div>
+                  <div class="rounded border-2 border-slate-800 bg-white px-3 py-2 text-center font-mono">fetch<br/>adapter</div>
+                </div>
+                <div class="mt-4 text-xs text-slate-500 text-center leading-relaxed">两个 adapter ⇒ 真 seam<br/><span class="text-slate-400">（对照：SseWriter 也是两个 adapter，那处设计是对的）</span></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="grid md:grid-cols-2 gap-6 text-sm">
+            <div class="space-y-2">
+              <p><span class="font-semibold">Problem：</span>「带上 token；遇到 401 就登出并跳 /login」有 3 份实现与 4 处 view 复制，7 个地方能重定向，没有单一归属，其中一处还是死代码。</p>
+              <p><span class="font-semibold">Solution：</span>把 token 注入、401 反应与跳转目标收到一个 request seam 之后，让 axios 与 fetch 两个 adapter 共用它；view 只问一个问题。</p>
+            </div>
+            <div>
+              <div class="label text-slate-400 mb-2">Wins</div>
+              <ul class="text-sm space-y-1 text-slate-700">
+                <li>· 会话过期只有一个主人</li>
+                <li>· 两个真 adapter，一个 seam</li>
+                <li>· view 不再做重定向</li>
+                <li>· 跳转目标变得可知</li>
+                <li>· fetch adapter 去重</li>
+                <li>· auth 策略变得可测</li>
+              </ul>
+            </div>
+          </div>
+
+          <details class="text-sm">
+            <summary class="cursor-pointer text-slate-500 hover:text-slate-800">证据</summary>
+            <div class="mt-3 space-y-2 text-slate-600 font-mono text-xs bg-stone-50 rounded-lg p-4 leading-relaxed">
+              <div>http.js:2-4 把 ElMessage、router、useUserStore 引进传输层；:23-27 与 :36-40 各自 logout + push</div>
+              <div>ai.js:7-14 authHeaders() 重建 http.js:11-17 已建的请求头；:16-20 handleUnauthorized() 重实现 logout+push；:5 重新硬编码 <code>API_BASE='/api'</code></div>
+              <div>ai.js:95-97 —— <code>recommendApi</code> 是走 http 的普通 REST 调用，却停在这个 fetch module 里</div>
+              <div>router/index.js:34-45 第三份（:37 重定向，:35 读 store）</div>
+              <div>view 侧 4 处：ArticleDetail.vue:51-55、:66-71、:116-121（<code>loginRequired()</code> 定义后无调用者）、CommentItem.vue:29-34</div>
+              <div class="text-slate-500">grep <code>请先登录</code> 恰好返回这 4 处；grep 确认 loginRequired 只有定义。另：stores/user.js:24 的 fetchMe() 全库无调用者，isAdmin 完全来自 localStorage 里登录那一刻的快照</div>
+            </div>
+          </details>
+        </article>
+
+        <!-- ══════════ 6 ══════════ -->
+        <article id="c6" class="rounded-xl border border-slate-200 bg-white p-6 space-y-6">
+          <div class="flex items-start justify-between gap-4 flex-wrap">
+            <h2 class="font-serif text-2xl">06 · 把上游解帧搬出传输层</h2>
+            <div class="flex gap-2 shrink-0">
+              <span class="text-xs px-2 py-1 rounded-full bg-emerald-100 text-emerald-800 font-medium">Strong</span>
+              <span class="text-xs px-2 py-1 rounded-full bg-slate-100 text-slate-600">local-substitutable</span>
+            </div>
+          </div>
+          <div class="font-mono text-xs text-slate-500 leading-relaxed">
+            ai/OpenAiClient.java:36-45,47,80-144,146-161,171-175 · test/ai/ChatServiceTest.java:32,51-56
+          </div>
+
+          <div class="grid md:grid-cols-2 gap-6 items-start">
+            <div>
+              <div class="label text-slate-400 mb-1">Before · 唯一能解帧的代码只能靠真实网络触达</div>
+              <div class="rounded-lg border border-slate-200 bg-stone-50 p-4" style="min-height:290px">
+                <div class="rounded border-2 border-slate-800 bg-white p-3">
+                  <div class="font-mono text-xs mb-2">OpenAiClient —— 一个 class 装了四件事</div>
+                  <div class="text-xs space-y-1 text-slate-600">
+                    <div>① 拼 payload（:146-161）</div>
+                    <div>② 每轮 new HttpClient（:171-175）</div>
+                    <div>③ 读 socket、切 data: 行（:52-70）</div>
+                    <div class="text-red-700">④ 参数分片重组 + 结束判定（:106-143，私有内部类）</div>
+                  </div>
+                </div>
+                <div class="text-center my-3 text-xs text-slate-500">
+                  测试只能整个 mock 掉它 —— <code>ChatServiceTest.java:32 @Mock</code><br/>
+                  <span class="text-red-600">于是 ④ 在整个测试套件里一帧都没被解析过</span>
+                </div>
+                <div class="rounded border border-red-300 bg-red-50 p-2 text-xs text-red-900">
+                  D8 / D9 就长在这个没有测试面的地方
+                </div>
+              </div>
+            </div>
+            <div>
+              <div class="label text-slate-400 mb-1">After · 帧进、事件出</div>
+              <div class="rounded-lg border border-slate-200 bg-stone-50 p-4 flex flex-col justify-center" style="min-height:290px">
+                <div class="rounded border-2 border-slate-800 bg-white px-3 py-2 text-center text-xs font-mono">OpenAiClient<br/><span class="text-slate-500">纯传输，不解析</span></div>
+                <svg width="100%" height="30"><line x1="50%" y1="0" x2="50%" y2="20" stroke="#0f172a" stroke-width="2"/><path d="M-5 18 L0 28 L5 18" fill="#0f172a" transform="translate(50%,0)"/></svg>
+                <div class="deep text-white rounded-lg px-4 py-4 text-center">
+                  <div class="label opacity-60 mb-1">deep module</div>
+                  <div class="font-semibold text-sm">frame reduction</div>
+                  <div class="text-xs opacity-70 mt-2 font-mono">frames → content / tool-call / end</div>
+                </div>
+                <svg width="100%" height="30"><line x1="50%" y1="0" x2="50%" y2="20" stroke="#0f172a" stroke-width="2"/><path d="M-5 18 L0 28 L5 18" fill="#0f172a" transform="translate(50%,0)"/></svg>
+                <div class="rounded border-2 border-slate-800 bg-white px-3 py-2 text-center text-xs font-mono">ChatService</div>
+                <p class="text-xs text-emerald-700 text-center mt-3">喂进固定帧，断言事件 —— 毫秒级，不碰网络</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="grid md:grid-cols-2 gap-6 text-sm">
+            <div class="space-y-2">
+              <p><span class="font-semibold">Problem：</span>唯一把上游帧变成事件的代码、以及唯一拼请求载荷的代码，都只能通过一次真实 HTTP 调用触达，于是最容易出错的那部分（分片重组、结束判定、错误帧）没有测试面，失败还静默退化成空回答。</p>
+              <p><span class="font-semibold">Solution：</span>把解帧与载荷构造抽成一个进程内 module，interface 很小：喂原始帧，吐 content / tool-call / end 事件；<code class="k">OpenAiClient</code> 退回纯传输。</p>
+            </div>
+            <div>
+              <div class="label text-slate-400 mb-2">Wins</div>
+              <ul class="text-sm space-y-1 text-slate-700">
+                <li>· D8/D9 变成一条测试</li>
+                <li>· 分片重组可离线验证</li>
+                <li>· 错误帧有了通道</li>
+                <li>· 未知帧不再静默</li>
+                <li>· 载荷构造可断言</li>
+                <li>· 传输层保持薄</li>
+              </ul>
+            </div>
+          </div>
+
+          <details class="text-sm">
+            <summary class="cursor-pointer text-slate-500 hover:text-slate-800">证据</summary>
+            <div class="mt-3 space-y-2 text-slate-600 font-mono text-xs bg-stone-50 rounded-lg p-4 leading-relaxed">
+              <div>解析器是私有内部类 <code>StreamAggregator</code>（:80），唯一入口 <code>accept(JsonNode)</code> 由 socket 喂（:67）</div>
+              <div>测试用手工回调绕过它：ChatServiceTest.java:51-56 <code>doAnswer(inv -&gt; { behavior.accept(inv.getArgument(2)); ... })</code></div>
+              <div>每轮新建 HttpClient（:171-175）—— 一次对话最多 4 个，无 keep-alive</div>
+              <div>:164-168 —— 任何非 JSON 的 <code>data:</code> 行都抛 <code>BizException(502, "AI 服务响应解析失败")</code></div>
+              <div>零测试范围：帧解析、buildPayload、SseWriterHttp 组帧、ToolRegistry、全部 6 个工具、api/ai.js 的解析器</div>
+            </div>
+          </details>
+        </article>
+
+        <!-- ══════════ 7 ══════════ -->
+        <article id="c7" class="rounded-xl border border-slate-200 bg-white p-6 space-y-6">
+          <div class="flex items-start justify-between gap-4 flex-wrap">
+            <h2 class="font-serif text-2xl">07 · 把 SSE seam 升到「对话行为」这一层</h2>
+            <div class="flex gap-2 shrink-0">
+              <span class="text-xs px-2 py-1 rounded-full bg-emerald-100 text-emerald-800 font-medium">Strong</span>
+              <span class="text-xs px-2 py-1 rounded-full bg-slate-100 text-slate-600">in-process</span>
+            </div>
+          </div>
+          <div class="font-mono text-xs text-slate-500 leading-relaxed">
+            ai/SseWriter.java:6-9 · ai/SseWriterHttp.java:19-25 · ai/ChatService.java:129-153 · ChatServiceTest.java:62-97 · frontend/src/api/ai.js:57-93 · docs/api.md:77-84
+          </div>
+
+          <div class="grid md:grid-cols-2 gap-6 items-start">
+            <div>
+              <div class="label text-slate-400 mb-1">Before · 同一份知识被实现四次</div>
+              <div class="rounded-lg border border-slate-200 bg-stone-50 p-4" style="min-height:300px">
+                <div class="rounded border-2 border-slate-800 bg-white p-3 text-center">
+                  <div class="font-mono text-xs mb-2">ChatService</div>
+                  <div class="text-xs text-red-700 font-mono">知道 4 个事件名 + 3 种载荷形状 + 顺序</div>
+                </div>
+                <div class="text-center my-2">
+                  <svg width="200" height="38" class="mx-auto">
+                    <line x1="100" y1="0" x2="100" y2="28" class="seam" stroke="#64748b" stroke-width="2"/>
+                    <text x="100" y="37" text-anchor="middle" class="label" fill="#64748b">event(name, dataJson)</text>
+                  </svg>
+                  <p class="text-xs text-slate-500">只抽象了帧外壳，没抽象载荷</p>
+                </div>
+                <div class="grid grid-cols-3 gap-2 text-xs text-center">
+                  <div class="rounded border border-red-300 bg-red-50 p-2 font-mono">SseWriterHttp<div class="text-slate-500">event:/data: 组帧</div></div>
+                  <div class="rounded border border-red-300 bg-red-50 p-2 font-mono">测试的 CapturingWriter<div class="text-slate-500">得自己再 parse 回 JSON</div></div>
+                  <div class="rounded border border-red-300 bg-red-50 p-2 font-mono">api/ai.js<div class="text-slate-500">第三种实现，且漏了 done</div></div>
+                </div>
+                <div class="rounded border border-red-300 bg-red-50 p-2 mt-2 text-xs text-red-900 font-mono">docs/api.md:79-84 —— 第四份副本</div>
+              </div>
+            </div>
+            <div>
+              <div class="label text-slate-400 mb-1">After · 说出行为，不拼 JSON</div>
+              <div class="rounded-lg border border-slate-200 bg-stone-50 p-4 flex flex-col justify-center" style="min-height:300px">
+                <div class="rounded border-2 border-slate-800 bg-white p-3 text-center">
+                  <div class="font-mono text-xs mb-2">ChatService</div>
+                  <div class="text-xs text-emerald-700 font-mono">assistantDelta(d)</div>
+                  <div class="text-xs text-emerald-700 font-mono">toolStarted(n, a)</div>
+                  <div class="text-xs text-emerald-700 font-mono">toolFinished(n, a, r)</div>
+                  <div class="text-xs text-emerald-700 font-mono">failed(m) · ended()</div>
+                </div>
+                <div class="text-center my-3">
+                  <svg width="200" height="34" class="mx-auto">
+                    <line x1="100" y1="0" x2="100" y2="26" stroke="#0f172a" stroke-width="2"/>
+                    <text x="100" y="34" text-anchor="middle" class="label" fill="#0f172a">行为层 seam</text>
+                  </svg>
+                </div>
+                <div class="deep text-white rounded-lg px-4 py-3 text-center">
+                  <div class="font-semibold text-sm">SSE egress module</div>
+                  <div class="text-xs opacity-70 mt-1">事件名 · 载荷形状 · 组帧 —— 唯一归属</div>
+                </div>
+                <div class="rounded border-2 border-slate-800 bg-white p-2 mt-3 text-center text-xs font-mono">SseWriterHttp<div class="text-slate-500">只剩字节写出</div></div>
+                <p class="text-xs text-emerald-700 text-center mt-2">测试断言行为，不再 parse 自己刚序列化的 JSON</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="grid md:grid-cols-2 gap-6 text-sm">
+            <div class="space-y-2">
+              <p><span class="font-semibold">Problem：</span>seam 是 <code class="k">event(name, dataJson)</code>，于是每个调用者、adapter、测试以及浏览器解析器都必须各自知道四个事件名、四种载荷形状和顺序规则 —— 这份知识当前被实现了四次。</p>
+              <p><span class="font-semibold">Solution：</span>把 seam 放在行为层（增量 / 工具开始 / 工具结束 / 失败 / 结束），由一个 module 拥有事件名、载荷形状与 SSE 组帧；<code class="k">ChatService</code> 说行为，测试断言行为。</p>
+            </div>
+            <div>
+              <div class="label text-slate-400 mb-2">Wins</div>
+              <ul class="text-sm space-y-1 text-slate-700">
+                <li>· 线格式只有一个主人</li>
+                <li>· 测试断言行为而非 JSON</li>
+                <li>· 客户端契约可共享</li>
+                <li>· done 不再是装饰</li>
+                <li>· SSE 组帧仍是一个 adapter</li>
+                <li>· 行为面取代形状面</li>
+              </ul>
+            </div>
+          </div>
+
+          <div class="rounded-lg bg-amber-50 border border-amber-200 p-3 text-xs text-amber-900">
+            <span class="font-semibold">先把 adapter 数说清楚：</span>确实存在两个 <code class="k">SseWriter</code> 实现（生产 <code class="k">SseWriterHttp</code>、测试 <code class="k">ChatServiceTest.CapturingWriter</code>），所以这是<strong>真 seam</strong> ——
+            但它真，是因为测试需要它，不是因为有什么东西在 seam 两侧变化。要改的是层级，不是再加抽象。
+          </div>
+        </article>
+
+        <!-- ══════════ 8 ══════════ -->
+        <article id="c8" class="rounded-xl border border-slate-200 bg-white p-6 space-y-6">
+          <div class="flex items-start justify-between gap-4 flex-wrap">
+            <h2 class="font-serif text-2xl">08 · 给文章→列表项的投影一个家</h2>
+            <div class="flex gap-2 shrink-0">
+              <span class="text-xs px-2 py-1 rounded-full bg-amber-100 text-amber-800 font-medium">Worth exploring</span>
+              <span class="text-xs px-2 py-1 rounded-full bg-slate-100 text-slate-600">in-process</span>
+            </div>
+          </div>
+          <div class="font-mono text-xs text-slate-500 leading-relaxed">
+            ArticleService.java:358-376,410-428 · RecommendService.java:33,62,71-80,95-113 · vo/ArticleListItemVO.java:12-27 · components/ArticleCard.vue:37
+          </div>
+
+          <div class="grid md:grid-cols-2 gap-6 items-start">
+            <div>
+              <div class="label text-slate-400 mb-1">Before · 组装被写了两次，第二份已经在漂移</div>
+              <div class="rounded-lg border border-slate-200 bg-stone-50 p-4" style="min-height:290px">
+                <div class="rounded border-2 border-slate-800 bg-white p-3 text-xs">
+                  <div class="font-mono mb-1">ArticleService.copyBase</div>
+                  <div class="text-emerald-700 font-mono">vo.setCoverThumb(coverThumbOf(...))  ← :415</div>
+                  <div class="text-slate-500 mt-1">作者一次批量解析：users.get(...)  ← :362-363</div>
+                </div>
+                <div class="text-center my-2 text-xs text-red-600">↓ 逐字复制后开始漂移</div>
+                <div class="rounded border-2 border-red-400 bg-red-50 p-3 text-xs">
+                  <div class="font-mono mb-1">RecommendService.build</div>
+                  <div class="text-red-700 font-mono">copyBase 的另外 9 个字段 …… 但从不设 coverThumb  ← :95-113</div>
+                  <div class="text-red-700 mt-1">作者逐个解析，且在 100 个候选的循环里  ← :107（N+1）</div>
+                </div>
+                <div class="rounded border border-amber-300 bg-amber-50 p-2 mt-2 text-xs text-amber-900">
+                  前端用 <code>article.coverThumb || article.cover</code> 把缺失悄悄降级掩盖了 —— Art<code>icleCard.vue:37</code>
+                </div>
+                <p class="text-xs text-slate-500 mt-2">单测看不见 N+1：<code>userService</code> 是 mock（RecommendServiceTest.java:41-42）</p>
+              </div>
+            </div>
+            <div>
+              <div class="label text-slate-400 mb-1">After · 一个投影 module</div>
+              <div class="rounded-lg border border-slate-200 bg-stone-50 p-4 flex flex-col items-center justify-center" style="min-height:290px">
+                <div class="flex gap-2 text-xs flex-wrap justify-center">
+                  <div class="px-2 py-1 rounded border border-slate-300 bg-white font-mono">feed</div>
+                  <div class="px-2 py-1 rounded border border-slate-300 bg-white font-mono">hot</div>
+                  <div class="px-2 py-1 rounded border border-slate-300 bg-white font-mono">search</div>
+                  <div class="px-2 py-1 rounded border border-slate-300 bg-white font-mono">favorites</div>
+                  <div class="px-2 py-1 rounded border border-slate-300 bg-white font-mono">admin</div>
+                  <div class="px-2 py-1 rounded border border-slate-300 bg-white font-mono">profile</div>
+                  <div class="px-2 py-1 rounded border border-slate-300 bg-white font-mono">recommend</div>
+                </div>
+                <svg width="100%" height="30"><line x1="50%" y1="0" x2="50%" y2="20" stroke="#0f172a" stroke-width="2"/><path d="M-5 18 L0 28 L5 18" fill="#0f172a" transform="translate(50%,0)"/></svg>
+                <div class="deep text-white rounded-lg px-5 py-4 text-center shadow-lg w-60">
+                  <div class="label opacity-60 mb-1">deep module</div>
+                  <div class="font-semibold">list-item projection</div>
+                  <div class="text-xs opacity-70 mt-2">作者 · 标签 · 缩略图 · 批量取数</div>
+                </div>
+                <p class="text-xs text-slate-500 mt-3 text-center">新增字段自动到达每个列表；N+1 在 module 内部消失</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="grid md:grid-cols-2 gap-6 text-sm">
+            <div class="space-y-2">
+              <p><span class="font-semibold">Problem：</span><code class="k">ArticleListItemVO</code> 被组装两次，而第二份已经悄悄漏掉一个字段、并丢掉了批量取数。</p>
+              <p><span class="font-semibold">Solution：</span>把 article→list-item 投影（作者、标签、缩略图、批量）收进一个 module，让列表路径与推荐器都穿过它。</p>
+            </div>
+            <div>
+              <div class="label text-slate-400 mb-2">Wins</div>
+              <ul class="text-sm space-y-1 text-slate-700">
+                <li>· locality：列表项形状一处</li>
+                <li>· 新字段自动到达所有列表</li>
+                <li>· 作者批量取数处处生效</li>
+                <li>· 推荐器去掉 N+1</li>
+                <li>· 投影可通过一个 interface 测试</li>
+                <li>· 漂移不可能再静默发生</li>
+              </ul>
+            </div>
+          </div>
+        </article>
+
+      </section>
+
+      <!-- ═══════════  C. 附录  ═══════════ -->
+      <section id="appendix" class="space-y-5">
+        <div class="flex items-baseline gap-3">
+          <h2 class="font-serif text-2xl">C · 较小的已确认发现</h2>
+          <span class="text-xs text-slate-500">真实但不值得单独开卡片</span>
+        </div>
+        <div class="rounded-xl border border-slate-200 bg-white divide-y divide-slate-100 text-sm">
+          <div class="p-4">
+            <div class="font-medium">viewer 应该作为依赖被接受，而不是从环境里读</div>
+            <div class="text-slate-600 text-xs mt-1 font-mono">
+              SecurityUtil.java:12-18（匿名即抛 401）→ 被三处 <code>catch → false</code> 当作控制流使用：ArticleService.java:198-207、:209-216、CommentService.java:72-79。
+              同一个问题在同一个文件里隔二十行有两种写法：:400-408 直接判 <code>auth == null</code>。
+              测试只能靠改线程局部变量来伪造登录：CommentServiceTest.java:43-44、LikeServiceTest.java:40-41，且都不清理。
+              SecurityUtil 是 final + 私有构造 + 全静态 ⇒ 任何 adapter 都满足不了它，viewer 只能被全局替换。
+              后果：三处 try/catch 的匿名分支、AdminService 的守卫，全都没有测试。
+            </div>
+          </div>
+          <div class="p-4">
+            <div class="font-medium">上传资产的约定散在三个 module 里，而且解析方在猜</div>
+            <div class="text-slate-600 text-xs mt-1 font-mono">
+              写入方生成 <code>base + "-thumb.jpg"</code>（UploadController.java:104）；读取方用正则从 URL 反推（ArticleService.java:423-428），并为不可解码图片打了个 <code>.webp</code> 补丁。
+              补丁不能泛化：<code>saveOriginal</code>（:109-113）对 jpg/png/gif 根本不写 <code>-thumb.jpg</code>，而 <code>coverThumbOf</code> 会照样合成这个文件名 ——
+              封面是自由文本 URL 字段（Write.vue:204「封面图片 URL，或上传后自动填充」），把 <code>type=content</code> 的 URL 粘进去，列表页就会去请求一个从未写入的文件。
+              目录属性在两处各声明一次默认值（UploadController.java:45、WebConfig.java:15）；<code>type</code> 是未校验的魔法字符串，<code>default -&gt; saveOriginal</code>（:74）意味着拼错就静默存原图而不是报错。
+            </div>
+          </div>
+          <div class="p-4">
+            <div class="font-medium">工具结果的契约没有信封</div>
+            <div class="text-slate-600 text-xs mt-1 font-mono">
+              参数强转被复制三次：ArticleDetailTool.java:55-58 ≡ RecommendArticlesTool.java:50-53，UserProfileTool.java:42-48 内联同一逻辑；
+              schema 里没有 <code>required</code>（ToolRegistry.java:37-42），模型漏传 id 时 Java 异常消息会原样送给 LLM。
+              错误是字符串拼接的 JSON（ChatService.java:98、:108）—— 驱动消息里一个引号就能造出坏 JSON。
+              截断出现两次且都可能切在 JSON 字符串中间（ChatService.java:110-112 截 4000、ArticleDetailTool.java:50-51 截 2000）。
+              <code>AbstractTool</code>（:11）没有任何抽象成员，只是命名空间；它的 <code>json()</code>（:13-19）把序列化失败吞成假成功，调用者无法察觉。
+              <code>ChatMessage.toolResult(..., name, ...)</code>（:24-26）接收 name 然后丢弃。
+              <code>ToolRegistry</code> 用 <code>Collectors.toMap</code> 建表 —— 工具重名会在启动时直接崩。
+            </div>
+          </div>
+          <div class="p-4">
+            <div class="font-medium">对话生命周期与取消不在内核里</div>
+            <div class="text-slate-600 text-xs mt-1 font-mono">
+              <code>AiExecutorConfig.java:16-20</code> core 2 / max 4 / queue 20 —— ThreadPoolExecutor 只在队列满后才扩容，所以稳态并发是 2，另外 20 个静默排队；
+              每场对话可以占用该槽位 4 轮 × 120 秒。
+              拒绝时 <code>execute</code> 抛异常，lambda 从不执行、<code>complete()</code> 从不执行，而 <code>setTimeout(0L)</code> 让请求也没有期限 ⇒ 客户端收不到任何 SSE 错误。
+              断连只有一种偶然信号：写 content 事件抛异常被转成 <code>StreamAbortedException</code>（ChatService.java:66-70）；写 tool 事件失败（:102、:113）会走成一条完整的 <code>log.error("AI chat failed")</code> 堆栈 —— 一次正常用户操作被记成服务故障。
+              轮与轮之间没有任何存活检查，所以浏览器「停止」不会传到服务端。没有心跳帧，响应头要到第一个 token 才 flush。
+            </div>
+          </div>
+          <div class="p-4">
+            <div class="font-medium">用户显示：fallback 链约有 20 个拷贝</div>
+            <div class="text-slate-600 text-xs mt-1 font-mono">
+              <code>avatarSrc(url, name)</code>（avatar.js:23-27）隐藏了「dicebear URL 一律丢弃」这条规则，而 <code>nickname || username</code> 在 9 个 module 里重复约 20 次
+              （App.vue:99 · ArticleCard.vue:27-28 · CommentItem.vue:64,69,83,94,99,101 · ArticleDetail.vue:165,166,240 · UserProfile.vue:46 · Profile.vue:72 · admin/Users.vue:36,45,78,80 · admin/Articles.vue:81 · admin/Comments.vue:70 · admin/Dashboard.vue:52），
+              其中两处在 <code>ElMessageBox</code> 确认文案里。
+              删减测试：删掉 avatar.js 会把 hash、调色板、SVG 摊回 9 个 module —— 它挣到了位置，要改的是 interface。
+            </div>
+          </div>
+          <div class="p-4">
+            <div class="font-medium">懒加载失败兜底横跨三处，没有归属</div>
+            <div class="text-slate-600 text-xs mt-1 font-mono">
+              router/index.js:47-58 是单槽注册表（第二个订阅者会静默顶掉第一个）+ 裸启发式 <code>error.type !== undefined</code>（来自提交 6c31e84，无测试）；
+              App.vue:41-45 是重试路径 1（两次未 await 的 replace）、:47-61 是路径 2（1200ms 定时器）、:37-39 是路径 3（整页 reload）、:120-127 渲染兜底 UI；
+              main.js:14 挂载时从不设 <code>app.config.errorHandler</code>。
+              App.vue 共 10 次提交，其中 4 次是这套机制，docs/lessons.md:29-30 记录了两个真实故障。
+            </div>
+          </div>
+          <div class="p-4">
+            <div class="font-medium">「登录后刷新用户」这条路径从未被调用</div>
+            <div class="text-slate-600 text-xs mt-1 font-mono">
+              stores/user.js:24 <code>fetchMe()</code> 全库无调用者；<code>isAdmin</code>（:11）直接读 localStorage 快照（:7）。
+              于是管理员改了某人的角色、或封禁了某人之后，对方客户端在重新登录前仍按旧角色渲染。
+              注意这不是越权：服务端 JwtAuthFilter.java:39 会对封禁用户直接拦截，所以影响限于 UI 陈旧。
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ═══════════  D. TOP  ═══════════ -->
+      <section id="top-recommendation">
+        <div class="rounded-xl deep text-white p-8 space-y-4">
+          <div class="label opacity-60">Top recommendation</div>
+          <h2 class="font-serif text-3xl">先做 01 与 02，且 01 应在 02 之前</h2>
+          <p class="text-white/80 max-w-3xl leading-relaxed">
+            <strong>01（内容可见性）</strong>是唯一同时命中「重复最多」「泄漏最深」「改动最频繁」「测试最少」四件事的候选，
+            并且它的重复已经产出四个可观察的错误行为（D3–D6）。它的规格目前只存在于一次提交标题里 ——
+            收敛它，等于给这条规则第一次写下正式定义。
+          </p>
+          <p class="text-white/80 max-w-3xl leading-relaxed">
+            <strong>02（AI 身份与只读）</strong>是严重度最高的：它是唯一一处「文档承诺被可触达的代码违反」，
+            同时造成一个越权读取（D1）和一个写入副作用（D2）。它之所以排在 01 之后，是因为
+            <em>01 建立的可见性 module 正是 02 需要工具去穿过的那个 seam</em> —— 先有它，02 的域层读操作才有地方变成真正无副作用。
+          </p>
+          <div class="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 pt-2 text-sm">
+            <div class="bg-white/5 rounded-lg p-3">
+              <div class="label opacity-60 mb-1">01 · locality</div>
+              8 条读路径收敛到 1，D3–D6 一并消失
+            </div>
+            <div class="bg-white/5 rounded-lg p-3">
+              <div class="label opacity-60 mb-1">02 · authority</div>
+              工具权限与 HTTP 权限对齐，「只读」变成可断言
+            </div>
+            <div class="bg-white/5 rounded-lg p-3">
+              <div class="label opacity-60 mb-1">03 · bug</div>
+              outlet 加 key，顺手修掉 D7
+            </div>
+            <div class="bg-white/5 rounded-lg p-3">
+              <div class="label opacity-60 mb-1">06 · test surface</div>
+              解开 D8/D9，AI 内核第一次可离线测
+            </div>
+          </div>
+          <p class="text-white/60 text-sm pt-2">
+            03、04、05 分属前端三个互不重叠的 module，可以在同一轮并行推进。
+            D11（404）与 D12（LIKE 转义）是各自一次提交就能收掉的小事，随手带上。
+          </p>
+        </div>
+      </section>
+
+    </main>
+  </body>
+</html>
