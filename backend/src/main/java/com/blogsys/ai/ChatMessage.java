@@ -21,7 +21,12 @@ public record ChatMessage(
         return new ChatMessage("assistant", content, null, toolCalls);
     }
 
-    public static ChatMessage toolResult(String toolCallId, String name, String content) {
+    /**
+     * 工具结果。**没有 name 参数** —— OpenAI 的 tool 消息只有
+     * {@code role} / {@code content} / {@code tool_call_id},工具名是靠 id 关联的。
+     * 此前这个工厂收一个 name 然后丢掉,读代码的人会以为它去了哪里。
+     */
+    public static ChatMessage toolResult(String toolCallId, String content) {
         return new ChatMessage("tool", content, toolCallId, null);
     }
 

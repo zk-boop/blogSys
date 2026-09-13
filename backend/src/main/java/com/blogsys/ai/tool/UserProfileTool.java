@@ -8,6 +8,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 @Component
@@ -38,14 +39,13 @@ public class UserProfileTool extends AbstractTool {
     }
 
     @Override
+    public List<String> requiredParameters() {
+        return List.of("userId");
+    }
+
+    @Override
     public String execute(Map<String, Object> args) {
-        Object raw = args.get("userId");
-        long userId;
-        if (raw instanceof Number number) {
-            userId = number.longValue();
-        } else {
-            userId = Long.parseLong(String.valueOf(raw));
-        }
+        long userId = requiredLong(args, "userId");
         UserVO vo = userService.publicProfile(userId);
         ObjectNode node = objectMapper.createObjectNode();
         node.put("id", vo.getId());

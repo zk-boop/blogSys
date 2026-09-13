@@ -279,4 +279,34 @@ class ChatServiceTest {
         verify(openAiClient).chatStream(any(), captor.capture(), any());
         return captor.getValue();
     }
+
+    @Test
+    @DisplayName("工具的错误信封是合法 JSON —— 消息里一个引号不再能把它弄坏")
+    void chat_shouldEscapeToolErrorMessages() throws Exception {
+        // 此前信封是字符串拼接:`{"error":"` + message + `"}`。
+        // 这一句带引号的消息会拼出一段坏 JSON,而它会作为 tool 结果原样回到模型那里 ——
+        // 模型读到的是「未知工具」还是「语法错误」,取决于它自己刚才说了什么。
+        streamToolCalls(List.of(toolCall("call-1", "getHotArticles", "{}")));
+        streamAnswer("好");
+        when(tool.execute(any())).thenThrow(new BizException("他说:\"这不可能\""));
+
+        chatService.chat(List.of(ChatMessage.user("x")), recorder(), VIEWER);
+
+        assertEquals("他说:\"这不可能\"", toolErrorEnvelope().path("error").asText(),
+                "消息要原样带回来,而不是把 JSON 弄坏");
+    }
+
+    /** 从第二次 chatStream 收到的消息里找出工具错误信封,并把它当 JSON 解析。 */
+    private com.fasterxml.jackson.databind.JsonNode toolErrorEnvelope() throws Exception {
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<ChatMessage>> captor = ArgumentCaptor.forClass(List.class);
+        verify(openAiClient, times(2)).chatStream(captor.capture(), anyList(), any());
+        for (ChatMessage message : captor.getAllValues().get(1)) {
+            String content = message.content();
+            if (content != null && content.contains("error")) {
+                return objectMapper.readTree(content);
+            }
+        }
+        throw new AssertionError("没有找到工具错误信封");
+    }
 }

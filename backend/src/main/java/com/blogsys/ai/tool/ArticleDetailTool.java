@@ -8,6 +8,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 @Component
@@ -40,8 +41,13 @@ public class ArticleDetailTool extends AbstractTool {
     }
 
     @Override
+    public List<String> requiredParameters() {
+        return List.of("id");
+    }
+
+    @Override
     public String execute(Map<String, Object> args) {
-        long id = idOf(args);
+        long id = requiredLong(args, "id");
         ArticleDetailVO vo = articleService.detail(id);
         ObjectNode node = compactArticle(objectMapper, vo);
         node.put("summary", vo.getSummary());
@@ -50,10 +56,5 @@ public class ArticleDetailTool extends AbstractTool {
         node.put("content", content.length() > CONTENT_LIMIT
                 ? content.substring(0, CONTENT_LIMIT) + "…(已截断)" : content);
         return json(objectMapper, node);
-    }
-
-    private long idOf(Map<String, Object> args) {
-        Object raw = args.get("id");
-        return raw instanceof Number number ? number.longValue() : Long.parseLong(String.valueOf(raw));
     }
 }

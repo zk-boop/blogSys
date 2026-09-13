@@ -1,5 +1,6 @@
 package com.blogsys.ai.tool;
 
+import com.blogsys.common.BizException;
 import com.blogsys.vo.ArticleListItemVO;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -21,6 +22,31 @@ public abstract class AbstractTool implements AgentTool {
     protected static String arg(Map<String, Object> args, String key, String fallback) {
         Object value = args.get(key);
         return value == null ? fallback : String.valueOf(value);
+    }
+
+    /**
+     * 取一个必填的整数参数。
+     *
+     * <p>这段强转此前被复制了三次(两个工具各有一份私有 `idOf`,一个内联同一逻辑)。
+     * 但比重复更要紧的是**失败时说的话**:以前模型漏传 id 时抛的是
+     * {@code Long.parseLong("null")} 的 Java 异常(`For input string: "null"`),
+     * 而那句话会原样进到错误信封里交给模型。模型看不懂它,也没法据此改正。
+     *
+     * <p>现在给一句模型能理解、也能转述给用户的话。
+     */
+    protected static long requiredLong(Map<String, Object> args, String key) {
+        Object raw = args.get(key);
+        if (raw == null) {
+            throw new BizException(key + " 是必填参数");
+        }
+        if (raw instanceof Number number) {
+            return number.longValue();
+        }
+        try {
+            return Long.parseLong(String.valueOf(raw).trim());
+        } catch (NumberFormatException e) {
+            throw new BizException(key + " 需要是一个整数,收到: " + raw);
+        }
     }
 
     /** 文章列表项 → 紧凑 JSON(供 LLM 阅读)。 */

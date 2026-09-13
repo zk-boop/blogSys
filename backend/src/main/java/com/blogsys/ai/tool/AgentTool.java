@@ -2,6 +2,7 @@ package com.blogsys.ai.tool;
 
 import com.blogsys.visibility.Viewer;
 
+import java.util.List;
 import java.util.Map;
 
 /** Agent 可调用工具:执行后返回给 LLM 的 JSON 文本。 */
@@ -13,6 +14,16 @@ public interface AgentTool {
 
     /** OpenAI JSON Schema 格式的参数定义(type=object)。 */
     Map<String, Object> parametersSchema();
+
+    /**
+     * 必填参数名 —— 会变成 schema 里的 {@code required}。
+     *
+     * <p>没有它,模型漏传参数时只能等到 Java 抛异常,而那已经是**运行时**:
+     * 一次本该被 schema 挡住的调用,变成了一个工具错误。默认空(没有必填参数)。
+     */
+    default List<String> requiredParameters() {
+        return List.of();
+    }
 
     /**
      * 本次提问的人能不能用这个工具。

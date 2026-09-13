@@ -8,6 +8,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 @Component
@@ -38,17 +39,17 @@ public class RecommendArticlesTool extends AbstractTool {
     }
 
     @Override
+    public List<String> requiredParameters() {
+        return List.of("articleId");
+    }
+
+    @Override
     public String execute(Map<String, Object> args) {
-        long articleId = idOf(args, "articleId");
+        long articleId = requiredLong(args, "articleId");
         ArrayNode articles = objectMapper.createArrayNode();
         for (ArticleListItemVO vo : recommendService.recommend(articleId, 5)) {
             articles.add(compactArticle(objectMapper, vo));
         }
         return json(objectMapper, countResult(objectMapper, articles));
-    }
-
-    private long idOf(Map<String, Object> args, String key) {
-        Object raw = args.get(key);
-        return raw instanceof Number number ? number.longValue() : Long.parseLong(String.valueOf(raw));
     }
 }

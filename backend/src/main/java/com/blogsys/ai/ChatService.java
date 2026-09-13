@@ -5,6 +5,7 @@ import com.blogsys.ai.tool.ToolRegistry;
 import com.blogsys.common.BizException;
 import com.blogsys.visibility.Viewer;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -97,7 +98,7 @@ public class ChatService {
             messages.add(ChatMessage.assistant(null, toolCalls[0]));
             for (ChatMessage.ToolCall call : toolCalls[0]) {
                 String result = executeTool(call, egress, viewer);
-                messages.add(ChatMessage.toolResult(call.id(), call.functionName(), result));
+                messages.add(ChatMessage.toolResult(call.id(), result));
             }
         }
         return true;
@@ -112,7 +113,7 @@ public class ChatService {
         // definitions(viewer) 已经把不可用的工具从清单里摘掉了,但模型可以凭空说出一个
         // 它没被给过的名字。所以强制在这里做第二次判定:那一处是 UX,这一处才是边界。
         if (tool == null || !tool.isAvailableTo(viewer)) {
-            return "{\"error\":\"未知工具: " + name + "\"}";
+            return errorEnvelope("未知工具: " + name);
         }
         Map<String, Object> args = parseArgs(call);
         egress.toolStarted(name, args);
@@ -121,13 +122,27 @@ public class ChatService {
             result = tool.execute(args);
         } catch (Exception e) {
             log.warn("tool {} failed: {}", name, e.getMessage());
-            result = "{\"error\":\"" + (e.getMessage() == null ? "工具执行失败" : e.getMessage()) + "\"}";
+            result = errorEnvelope(e.getMessage() == null ? "工具执行失败" : e.getMessage());
         }
         if (result.length() > TOOL_RESULT_LIMIT) {
             result = result.substring(0, TOOL_RESULT_LIMIT) + "…(已截断)";
         }
         egress.toolFinished(name, args, result);
         return result;
+    }
+
+    /**
+     * 工具的错误信封。
+     *
+     * <p>此前是字符串拼接:{@code "{\"error\":\"" + message + "\"}"} —— 驱动消息里
+     * **一个引号**就能造出一段坏 JSON,而那段 JSON 会作为 tool 结果原样回到模型那里
+     * (模型读到的是「未知工具」还是「语法错误」,取决于它自己刚才说了什么)。
+     * 交给 ObjectMapper 转义才是唯一说得通的做法。
+     */
+    private String errorEnvelope(String message) {
+        ObjectNode node = objectMapper.createObjectNode();
+        node.put("error", message);
+        return node.toString();
     }
 
     private Map<String, Object> parseArgs(ChatMessage.ToolCall call) {
