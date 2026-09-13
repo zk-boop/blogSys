@@ -3,6 +3,7 @@ package com.blogsys.ai;
 import com.blogsys.ai.tool.AgentTool;
 import com.blogsys.ai.tool.ToolRegistry;
 import com.blogsys.common.BizException;
+import com.blogsys.visibility.Viewer;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import lombok.RequiredArgsConstructor;
@@ -32,7 +33,15 @@ public class ChatService {
     private final ObjectMapper objectMapper;
     private final AiProperties properties;
 
-    public void chat(List<ChatMessage> incoming, SseWriter writer) {
+    /**
+     * 跑一场对话。
+     *
+     * <p>{@code viewer} 是<b>提问者本人</b>,由 controller 在请求线程上解析后传进来。
+     * 这场对话整个跑在 {@code chatExecutor} 的池线程上 —— 那里没有请求上下文,
+     * 所以「谁在问」必须是被接受的依赖,而不是到环境里去猜。它同时决定两件事:
+     * 哪些工具出现在发给模型的清单里,以及某次调用是否真的被执行。
+     */
+    public void chat(List<ChatMessage> incoming, SseWriter writer, Viewer viewer) {
         if (!properties.isEnabled()) {
             sendError(writer, "AI 服务未配置:请在环境变量中设置 AI_API_KEY(OpenAI 兼容 API Key)");
             return;
@@ -43,7 +52,7 @@ public class ChatService {
         messages.addAll(incoming.subList(start, incoming.size()));
 
         try {
-            boolean hasToolCalls = runToolLoop(messages, writer);
+            boolean hasToolCalls = runToolLoop(messages, writer, viewer);
             if (hasToolCalls) {
                 sendMessage(writer, "抱歉,处理你的请求时步骤过多,请缩小问题范围后重试。");
             }
@@ -57,10 +66,10 @@ public class ChatService {
     }
 
     /** 流式工具循环:内容增量实时转发;返回是否有未消费的工具调用(轮数耗尽)。 */
-    private boolean runToolLoop(List<ChatMessage> messages, SseWriter writer) throws Exception {
+    private boolean runToolLoop(List<ChatMessage> messages, SseWriter writer, Viewer viewer) throws Exception {
         for (int round = 0; round < MAX_TOOL_ROUNDS; round++) {
             List<ChatMessage.ToolCall>[] toolCalls = new List[1];
-            openAiClient.chatStream(messages, toolRegistry.definitions(), new ChatStreamListener() {
+            openAiClient.chatStream(messages, toolRegistry.definitions(viewer), new ChatStreamListener() {
                 @Override
                 public void onContent(String delta) {
                     try {
@@ -85,19 +94,24 @@ public class ChatService {
             }
             messages.add(ChatMessage.assistant(null, toolCalls[0]));
             for (ChatMessage.ToolCall call : toolCalls[0]) {
-                String result = executeTool(call, writer);
+                String result = executeTool(call, writer, viewer);
                 messages.add(ChatMessage.toolResult(call.id(), call.functionName(), result));
             }
         }
         return true;
     }
 
-    private String executeTool(ChatMessage.ToolCall call, SseWriter writer) throws Exception {
+    private String executeTool(ChatMessage.ToolCall call, SseWriter writer, Viewer viewer) throws Exception {
         String name = call.functionName();
-        if (!toolRegistry.contains(name)) {
+        AgentTool tool = toolRegistry.get(name);
+        // 「不存在」与「对你不存在」必须给出**逐字相同**的答复 —— 两处稍有差别就是一个
+        // 存在性预言机,模型会从措辞里读出「这儿有个你不能用的能力」,然后反复重试。
+        //
+        // definitions(viewer) 已经把不可用的工具从清单里摘掉了,但模型可以凭空说出一个
+        // 它没被给过的名字。所以强制在这里做第二次判定:那一处是 UX,这一处才是边界。
+        if (tool == null || !tool.isAvailableTo(viewer)) {
             return "{\"error\":\"未知工具: " + name + "\"}";
         }
-        AgentTool tool = toolRegistry.get(name);
         Map<String, Object> args = parseArgs(call);
         sendToolEvent(writer, name, args, null);
         String result;

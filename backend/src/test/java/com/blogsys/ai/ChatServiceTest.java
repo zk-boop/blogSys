@@ -3,8 +3,10 @@ package com.blogsys.ai;
 import com.blogsys.ai.tool.AgentTool;
 import com.blogsys.ai.tool.ToolRegistry;
 import com.blogsys.common.BizException;
+import com.blogsys.visibility.Viewer;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -15,6 +17,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
@@ -27,6 +30,9 @@ import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class ChatServiceTest {
+
+    /** 一个普通登录用户。工具清单与执行判定都按它计算。 */
+    private static final Viewer VIEWER = Viewer.of(1L, false);
 
     @Mock
     private OpenAiClient openAiClient;
@@ -44,6 +50,9 @@ class ChatServiceTest {
         properties = new AiProperties();
         properties.setApiKey("test-key");
         when(tool.name()).thenReturn("getHotArticles");
+        // mock 的 boolean 默认是 false,而 isAvailableTo 是执行前的门槛 ——
+        // 不显式打开的话,下面每个用例都会在「工具不可用」处被拦下。
+        lenient().when(tool.isAvailableTo(any())).thenReturn(true);
         ToolRegistry registry = new ToolRegistry(List.of(tool));
         chatService = new ChatService(openAiClient, registry, objectMapper, properties);
         behaviorIndex = 0;
@@ -118,7 +127,7 @@ class ChatServiceTest {
         properties.setApiKey("");
         SseWriter writer = writer();
 
-        chatService.chat(List.of(ChatMessage.user("你好")), writer);
+        chatService.chat(List.of(ChatMessage.user("你好")), writer, VIEWER);
 
         String joined = joinedEvents(writer);
         assertTrue(joined.contains("AI 服务未配置"));
@@ -130,7 +139,7 @@ class ChatServiceTest {
         streamAnswer("你好!我是博客助手。");
 
         SseWriter writer = writer();
-        chatService.chat(List.of(ChatMessage.user("你是谁")), writer);
+        chatService.chat(List.of(ChatMessage.user("你是谁")), writer, VIEWER);
 
         String joined = joinedEvents(writer);
         assertTrue(fullContent(writer).contains("你好!我是博客助手。"));
@@ -145,7 +154,7 @@ class ChatServiceTest {
         when(tool.execute(any())).thenReturn("{\"count\":5}");
 
         SseWriter writer = writer();
-        chatService.chat(List.of(ChatMessage.user("有哪些热门文章")), writer);
+        chatService.chat(List.of(ChatMessage.user("有哪些热门文章")), writer, VIEWER);
 
         String joined = joinedEvents(writer);
         assertTrue(joined.contains("tool:"));
@@ -162,7 +171,7 @@ class ChatServiceTest {
         when(tool.execute(any())).thenThrow(new BizException("模拟失败"));
 
         SseWriter writer = writer();
-        chatService.chat(List.of(ChatMessage.user("查热门")), writer);
+        chatService.chat(List.of(ChatMessage.user("查热门")), writer, VIEWER);
 
         String joined = joinedEvents(writer);
         assertTrue(joined.contains("模拟失败"));
@@ -178,7 +187,7 @@ class ChatServiceTest {
         when(tool.execute(any())).thenReturn("{}");
 
         SseWriter writer = writer();
-        chatService.chat(List.of(ChatMessage.user("一直调用工具")), writer);
+        chatService.chat(List.of(ChatMessage.user("一直调用工具")), writer, VIEWER);
 
         String joined = joinedEvents(writer);
         assertTrue(fullContent(writer).contains("步骤过多"));
@@ -193,7 +202,7 @@ class ChatServiceTest {
         streamAnswer("已收到。");
 
         SseWriter writer = writer();
-        chatService.chat(List.of(ChatMessage.user("调工具")), writer);
+        chatService.chat(List.of(ChatMessage.user("调工具")), writer, VIEWER);
 
         @SuppressWarnings("unchecked")
         ArgumentCaptor<List<ChatMessage>> captor = ArgumentCaptor.forClass(List.class);
@@ -201,5 +210,57 @@ class ChatServiceTest {
         String secondCall = captor.getAllValues().get(1).toString();
         assertTrue(secondCall.contains("未知工具"));
         verify(tool, never()).execute(any());
+    }
+
+    // ---- 「谁在问」穿过 seam:工具清单与执行判定都由提问者决定 ----
+
+    @Test
+    @DisplayName("不可用的工具不出现在发给模型的清单里 —— 让它连尝试的机会都没有")
+    void chat_shouldNotOfferUnavailableTool() {
+        when(tool.isAvailableTo(any())).thenReturn(false);
+        streamAnswer("好的。");
+
+        chatService.chat(List.of(ChatMessage.user("全站有多少文章")), writer(), VIEWER);
+
+        assertTrue(offeredTools().isEmpty(),
+                "对提问者不可用的工具不该出现在 tools 列表里");
+    }
+
+    @Test
+    @DisplayName("同一个工具,换管理员来问就出现在清单里 —— 过滤的是人,不是工具")
+    void chat_shouldOfferTheTool_whenViewerIsAdmin() {
+        streamAnswer("好的。");
+
+        chatService.chat(List.of(ChatMessage.user("全站有多少文章")), writer(), Viewer.of(1L, true));
+
+        assertEquals(List.of("getHotArticles"),
+                offeredTools().stream().map(d -> d.function().name()).toList());
+    }
+
+    @Test
+    @DisplayName("模型凭空说出一个它没被给过的工具名:答复与「未知工具」逐字相同")
+    void chat_shouldRefuseUnavailableTool_withTheSameAnswerAsAnUnknownTool() {
+        // 清单过滤只是 UX —— 模型可以猜出一个名字。强制在执行前做第二次判定,
+        // 且两种情况的措辞必须一致:稍有差别就是「这儿有个你不能用的东西」的预言机。
+        when(tool.isAvailableTo(any())).thenReturn(false);
+        streamToolCalls(List.of(toolCall("call-1", "getHotArticles", "{}")));
+        streamAnswer("已收到。");
+
+        SseWriter writer = writer();
+        chatService.chat(List.of(ChatMessage.user("调工具")), writer, VIEWER);
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<ChatMessage>> captor = ArgumentCaptor.forClass(List.class);
+        verify(openAiClient, times(2)).chatStream(captor.capture(), anyList(), any());
+        assertTrue(captor.getAllValues().get(1).toString().contains("未知工具"));
+        verify(tool, never()).execute(any());
+    }
+
+    /** 第一次 chatStream 调用实际发出去的 tools 列表。 */
+    private List<ToolDefinition> offeredTools() {
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<ToolDefinition>> captor = ArgumentCaptor.forClass(List.class);
+        verify(openAiClient).chatStream(any(), captor.capture(), any());
+        return captor.getValue();
     }
 }
