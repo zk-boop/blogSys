@@ -82,7 +82,18 @@
 | 前端测试 | 从零到有:`npm test` = `node --test`,**零新增依赖**;10 个用例钉住重挂载边界 |
 | 对外行为变更 | 搜索时首页会重挂载,因而会重取 `/api/tags` 与 `/api/articles/hot` |
 
-## v5 候选(来自 2026-09-13 架构评审,8 个候选里已完成 3 个)
+## v5 已完成:把上游解帧搬出传输层(候选 06)
+
+详见 `docs/architecture.md` §13。
+
+| 项 | 说明 |
+|---|---|
+| 机制 | 新增 `StreamReducer`(帧进、事件出,不认识网络)与 `ChatPayload`(请求体构造,纯函数);`OpenAiClient` 退回纯传输,只剩线格式切分与 HTTP 错误 |
+| 修掉 | **D8** 错误帧被静默丢弃(限流/内容过滤 → 空白回答 + done)· **D9** 零参数工具调用被重新归类成「没有工具调用」,模型不知道它被跳过 · 被截断的流不再伪装成正常结束 |
+| 顺带 | `HttpClient` 提成字段(此前每轮新建一个,一次对话最多 4 个且无 keep-alive) |
+| 测试 | 111 → 126。D8/D9 各成一条毫秒级用例,不再依赖真实网络 |
+
+## v5 候选(来自 2026-09-13 架构评审,8 个候选里已完成 4 个)
 
 完整论证与前后对照图见 `docs/architecture-review-2026-09-13.html`(HTML,含 Mermaid 图)。
 以下是一行摘要,防止那份快照丢失时工作项也一起丢:
@@ -94,6 +105,6 @@
 | 03 | ~~给 router outlet 加 route identity~~ | Strong | **已完成**,见 `architecture.md` §12。outlet 无 `:key`,`/article/A → /article/B` 复用实例 → URL 变了正文不变 |
 | 04 | 6 个 view 各自手搓的分页切片收成一个 deep module | Strong | 状态五元组 ×6、reload 函数体 ×7、分页块逐字相同 ×6;15 个 view 里只有 1 个 `catch`,「请求失败」当前不可表达 |
 | 05 | 让 session 只有一个归属 | Strong | 「带 token + 401 登出跳转」有 3 份实现 + 4 处 view 复制,7 处可重定向;`loginRequired()` 是死代码 |
-| 06 | 把上游解帧搬出传输层 | Strong | 唯一解帧的代码是私有内部类,只能靠真实网络触达 → D8(错误帧被静默丢弃)与 D9(零参数工具调用可能被丢掉)长在无测试面的地方 |
+| 06 | ~~把上游解帧搬出传输层~~ | Strong | **已完成**,见 `architecture.md` §13。唯一解帧的代码曾只能靠真实网络触达 → D8(错误帧被静默丢弃)与 D9(零参数工具调用可能被丢掉)长在无测试面的地方 |
 | 07 | SSE seam 升到「对话行为」这一层 | Strong | 线格式知识被实现四次(`ChatService`、`SseWriterHttp`、测试的 CapturingWriter、`api/ai.js`),且 `done` 事件客户端没处理 |
 | 08 | 给文章→列表项的投影一个家 | Worth exploring | `ArticleListItemVO` 组装两次,第二份漏了 `coverThumb` 且有 N+1;前端用 `coverThumb \|\| cover` 把缺失掩盖了 |
