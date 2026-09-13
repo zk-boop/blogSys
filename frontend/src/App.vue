@@ -48,6 +48,9 @@ function retryNavigation() {
 
 onMounted(() => {
   window.addEventListener('scroll', onScroll, { passive: true })
+  // 用服务端的事实刷新会话快照。localStorage 里那份是「登录那一刻」的,之后管理员
+  // 改了角色或封禁了人,客户端在重新登录前会一直按旧角色渲染 —— 这条路径此前从未被调用。
+  store.fetchMe()
   onModuleLoadError(() => {
     moduleError.value = true
     setTimeout(() => {
