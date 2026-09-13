@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { articleApi, uploadApi } from '../api'
@@ -12,7 +12,9 @@ const router = useRouter()
 const store = useUserStore()
 
 const isEdit = computed(() => !!route.params.id)
-const originalStatus = ref(1)
+/** articles.status 的取值,与后端 ArticleStatus 对应。 */
+const PUBLISHED = 1
+const originalStatus = ref(PUBLISHED)
 const formRef = ref()
 const saving = ref(false)
 const uploading = ref(false)
@@ -49,6 +51,10 @@ async function loadArticle() {
   form.cover = data.cover
   form.tagNames = data.tags
   form.content = data.content
+  // 先让上面这些赋值流过下面那个深度 watcher,再打开 loaded。
+  // 否则 watcher 会在这个同步块结束后才 flush,那时 loaded 已经是 true ——
+  // 于是「打开编辑页、什么都不碰」也会被判定为「有改动」,20 秒后触发一次自动保存。
+  await nextTick()
   loaded.value = true
   dirty.value = false
 }
@@ -64,7 +70,8 @@ function payload(draft) {
   }
 }
 
-async function save(draft, silent = false) {
+/** 用户主动保存:校验、提示、必要时跳转。自动保存不走这里(见 autosave)。 */
+async function save(draft) {
   if (!draft) {
     await formRef.value.validate()
   }
@@ -73,18 +80,14 @@ async function save(draft, silent = false) {
     if (isEdit.value) {
       await articleApi.update(route.params.id, payload(draft))
       dirty.value = false
-      if (!silent) {
-        ElMessage.success(draft ? '草稿已保存' : '已发布')
-      }
+      ElMessage.success(draft ? '草稿已保存' : '已发布')
       if (!draft) {
         router.push(`/article/${route.params.id}`)
       }
     } else {
       const id = await articleApi.create(payload(draft))
       dirty.value = false
-      if (!silent) {
-        ElMessage.success(draft ? '草稿已保存' : '发布成功')
-      }
+      ElMessage.success(draft ? '草稿已保存' : '发布成功')
       if (!draft) {
         router.push(`/article/${id}`)
       } else {
@@ -96,12 +99,36 @@ async function save(draft, silent = false) {
   }
 }
 
+/**
+ * 自动保存:把当前内容落库,**不改发布状态、也不跳转**。
+ *
+ * <p>它此前是 `save(true, true)` —— 固定以 `draft: true` 保存。于是打开一篇**已发布**
+ * 文章的编辑页停留 20 秒,那篇文章就被静默改成了草稿;`originalStatus` 在载入时读了出来
+ * 却从未被使用过。现在按文章原本的状态保存。
+ *
+ * <p>新文章仍以草稿落库:用户没点发布,不该替他发布。
+ *
+ * <p>后端的 `draft` 是 `Boolean`,且 `null/false` 都表示发布(见 `ArticleService.resolveStatus`),
+ * 所以这里必须显式传出想要的状态,不能靠省略字段。
+ */
 async function autosave() {
   if (!dirty.value || saving.value) return
+  saving.value = true
+  const draft = isEdit.value ? originalStatus.value !== PUBLISHED : true
   try {
-    await save(true, true)
+    if (isEdit.value) {
+      await articleApi.update(route.params.id, payload(draft))
+    } else {
+      const id = await articleApi.create(payload(draft))
+      dirty.value = false
+      router.replace(`/write/${id}`)
+      return
+    }
+    dirty.value = false
   } catch {
     /* 自动保存失败静默,下次定时重试 */
+  } finally {
+    saving.value = false
   }
 }
 
@@ -174,8 +201,6 @@ function insertMarkdown(text) {
     form.content += text
   }
 }
-
-onMounted(loadArticle)
 </script>
 
 <template>
