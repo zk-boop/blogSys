@@ -40,7 +40,15 @@ public class SecurityConfig {
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                 .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/api/auth/**", "/uploads/**", "/rss",
+                        // "/error" 不是接口,而是**容器的错误派发入口**:容器出错时会向它做一次
+                        // ERROR 型 dispatch,而那个 dispatch 走一遍过滤器链时是没有身份的
+                        // (JwtAuthFilter 是 OncePerRequestFilter,默认跳过 ERROR 派发)。
+                        // 不放行它,任何一次「容器层错误」都会被这里拒掉,变成一条
+                        // AuthorizationDeniedException,再叠一条「已提交的响应渲染不了错误页」——
+                        // 于是**一次正常用户操作(关页面/点停止)会留下两条 ERROR 加完整堆栈**。
+                        // 它自己不带业务数据(BasicErrorController 只回 status/path 之类),
+                        // 所以放行的风险面很小;真正要守的是业务接口,那些规则一条没动。
+                        .requestMatchers("/error", "/api/auth/**", "/uploads/**", "/rss",
                                 "/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/articles/*/edit").authenticated()
                         .requestMatchers(HttpMethod.GET, "/api/articles/**", "/api/tags").permitAll()

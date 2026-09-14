@@ -58,6 +58,7 @@
 | 前端:写接口 404 的文案 | 待做 | 三个写接口现在会返回 404,前端需要相应提示 |
 | ~~前端:outlet route identity~~ | **已完成** | 点相关推荐 URL 变了正文不变;`Write.vue` 的 `onMounted` 注册了两次。标识收进 `frontend/src/router/identity.js` 的纯函数 `outletKey`,详见 `docs/architecture.md` §12 |
 | `hot` 接口的 `size` 没有下限 | 待做(2026-09-14 修文档时发现) | `ArticleService.hot` 只把 `size` 钳到**上限 20**,不看下限:`?size=-1` 会拼出 `LIMIT -1` 直接 500,`?size=0` 返回空列表。它是**公开**接口,所以这是一次「畸形请求得到 500 而不是 400」。一行 `Math.max(1, …)` 就能收掉,但它是一次行为变更(新增校验),没有顺手改 |
+| `/error` 派发剩下的那一条 ERROR | 待做(2026-09-14,见 §35.3) | 2 条 ERROR 已收成 1 条 ERROR + 2 条 WARN(不再有安全含义,也没污染 SSE 流)。剩下那条是 `BasicErrorController` 往**已提交为 text/event-stream** 的响应里写错误 JSON、找不到转换器,被 `GlobalExceptionHandler` 兜底记成 `Unhandled exception`。两个候选修法:给 `/error` 一个「响应已提交就什么都不做」的自定义 error controller;或在 `GlobalExceptionHandler` 里显式处理 `HttpMessageNotWritableException` 并降级为 DEBUG。都要各自一次对照实验 |
 | RSS 的站点地址写死在代码里 | 待做(2026-09-14 发现) | `RssController.SITE_URL` 硬编码 `http://localhost:8080`,条目的 `link`/`guid` 全按它拼 —— 换域名必须改代码并重新部署。应做成配置项(如 `blogsys.site-url`),让「站点对外地址」只有一处 |
 | backlog 各节的测试数不是当前值 | 说明(2026-09-14) | 下文各节的「测试 x → y」记的都是**当时**的累计值,不要拿它们对总数。当前:后端 **185** 个 `@Test`、前端 **97** 个用例 |
 

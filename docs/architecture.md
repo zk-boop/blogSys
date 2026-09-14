@@ -2021,3 +2021,58 @@ PASS  最早一篇的「下一篇」  → /article/28
 2. **「ID 会变」这句话第一次咬到我**：清空重灌之后文章 ID 从 25 变成 34，核对脚本里的硬编码
    ID 当场 404。这正是 `tools/seed/README.md` 里写「引用要按 slug 而不是 id」的原因 ——
    写那句话的时候我只是觉得有道理，现在是实测过一次了。
+
+---
+
+## 35. §31 结案：容器层的错误派发不再被鉴权拒掉（2026-09-14）
+
+### 35.1 先做对照，再改
+
+§31 记着一条实测发现：「用户点停止/关页面」会在容器层留下两条 ERROR 加完整堆栈。
+当时的判断是「修法是改授权面，而它有一个**没验证过**的后果：放行之后容器会真的去渲染
+`/error`，而此时响应已经提交（SSE 已经写过字节）」。所以这一轮先做对照实验，再动手。
+
+**实验方式**：带真实模型起后端，用裸 TCP 直接读原始字节，第 4 秒**关掉客户端**（普通 FIN，
+即浏览器 `abort()` 关的那种），25 秒后数日志。
+
+| | 改之前 | 改之后 |
+|---|---|---|
+| 断开时的 ERROR 行 | **2** —— 其中一条是 `AuthorizationDeniedException: Access Denied`（读日志的人会以为出了安全事件） | **1** —— `HttpMessageNotWritableException: No converter for [...] with preset Content-Type 'text/event-stream'` |
+| `ErrorPage` 处理失败 | 1 | **0** |
+| 附带 | —— | 2 条 WARN：`Ignoring exception, response committed`（这是**正确**的处置：写不进去就不写） |
+| 直接访问 `GET /error` | 401 | 500，body 只有 `{"timestamp":…,"status":999,"error":"None"}` |
+| **正常**一场对话的流 | `: ping` + `event:*` | 同样：2680 字节的 `: ping` 与 `event:message`，**没有任何错误 JSON 被塞进流里** |
+
+最后一行就是对那个「没验证过的后果」的回答：**错误页不会被塞进已经开始的 SSE 流**。
+原因是响应已经提交，Spring 的 `DefaultHandlerExceptionResolver` 会直接放弃
+（`Ignoring exception, response committed`）—— 客户端那边一个字节都没多。
+
+### 35.2 改动
+
+`SecurityConfig` 的 permitAll 里加了 `"/error"`，并把理由写在代码注释里：
+
+> `/error` 不是接口，而是**容器的错误派发入口**：容器出错时会向它做一次 ERROR 型 dispatch，
+> 而那个 dispatch 走一遍过滤器链时是没有身份的（`JwtAuthFilter` 是 `OncePerRequestFilter`，
+> 默认跳过 ERROR 派发）。不放行它，任何一次容器层错误都会被拒掉，再叠一条「已提交的响应
+> 渲染不了错误页」—— 于是**一次正常用户操作会留下两条 ERROR 加完整堆栈**。
+
+业务接口的规则一条没动（`/api/**` 的每一条都在 `"/error"` 之后）。
+
+### 35.3 剩下的那一条 ERROR（诚实记录，没有收干净）
+
+2 条 ERROR 变成了 1 条 ERROR + 2 条 WARN。剩下这条的性质与原来不同，也**不再有安全含义**：
+
+```
+ERROR GlobalExceptionHandler : Unhandled exception
+org.springframework.http.converter.HttpMessageNotWritableException:
+  No converter for [class java.util.LinkedHashMap] with preset Content-Type 'text/event-stream'
+```
+
+机制：ERROR 派发现在能进应用了，于是 Spring 的 `BasicErrorController` 试图把错误 JSON
+写进一个**已经提交为 `text/event-stream`** 的响应，找不到转换器。它写不进去（也就没污染流），
+但我们的 `GlobalExceptionHandler` 兜底分支把它记成了一条 `Unhandled exception`。
+
+**没有继续收**，两个候选修法都记进 `docs/backlog.md`，因为都超出这一轮的范围：
+给 `/error` 一个「响应已提交就什么都不做」的自定义 error controller；或者在
+`GlobalExceptionHandler` 里显式处理 `HttpMessageNotWritableException` 并降级为 DEBUG
+（「写不出去」不是服务故障）。两者都要各自的一次对照实验。

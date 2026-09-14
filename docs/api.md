@@ -175,6 +175,14 @@ Agent 可用工具:`searchArticles(keyword)`、`getArticleDetail(id)`、`getUser
 而 `GET /api/users/{id}` 里同名字段是**已发布文章数**:同一个字段名两种含义,是刻意保留的既有契约
 (改动它会动到前端契约,所以只在两处写明,不静默改名)。
 
+## `/error`（容器的错误派发入口，不是业务接口）
+
+它被放行（permitAll）是因为**容器的 ERROR 型 dispatch 没有身份**：不放行的话，任何一次容器层
+错误都会在那个 dispatch 里被鉴权拒掉，再叠一条「已提交的响应渲染不了错误页」—— 一次正常用户
+操作（关页面、点停止）就会留下两条 ERROR 加堆栈。直接访问它只会得到
+`{"status":999,"error":"None"}` 这类占位 JSON，不含任何业务数据。来龙去脉见
+`architecture.md` §35。
+
 ## 错误码
 
 | HTTP | code | 说明 |
