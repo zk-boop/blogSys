@@ -29,6 +29,21 @@ blogSys 是一个尊重创作的内容平台:
 - **AI 助手** `/ai`:登录后可用。Agent 通过 6 个只读工具检索站内数据(搜索文章/查看详情/查用户/站内统计/热门文章/相关推荐),SSE 流式输出,打字机效果
 - **相关推荐**:文章详情页底部,标签重叠 + 标题/摘要/正文关键词打分,**纯算法,不依赖 AI**
 
+## 截图
+
+1600×1000 视口下的真实运行画面,数据来自 `tools/seed/`(可一条命令清空):
+
+| 首页 | 文章详情 |
+|---|---|
+| ![首页](docs/screenshots/01-home.png) | ![文章详情](docs/screenshots/02-article.png) |
+
+| AI 助手 | 管理后台 | 个人主页 |
+|---|---|---|
+| ![AI 助手](docs/screenshots/03-ai-chat.png) | ![管理后台](docs/screenshots/04-admin.png) | ![个人主页](docs/screenshots/05-profile.png) |
+
+文章详情页的目录侧栏在视口宽 ≥ 1280px 时才出现(CSS 门槛,窄屏是单列布局)。
+部署文档见 `docs/deploy.md`。
+
 ## 目录结构
 
 ```
