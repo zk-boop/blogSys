@@ -1,8 +1,14 @@
 spring:
   application:
     name: blogsys-backend
-  profiles:
-    active: local
+  # 这里**刻意不设默认 profile**。
+  #
+  # 此前写的是 `profiles.active: local`,而 local 是"允许用默认 JWT 密钥启动"的那一个
+  # (见 config/StartupSecurityPolicy)—— 于是部署者什么都不配、直接 java -jar 就落在 local 上,
+  # 那道 fail-fast 永远不会触发:一道被默认值悄悄关掉的护栏,等于没有护栏。
+  #
+  # 现在:不指定 profile 就用哪套配置都是显式的。本地开发加 `-Dspring-boot.run.profiles=local`
+  # (或 --spring.profiles.active=local),生产必须显式给 JWT_SECRET 与 DB_* 环境变量。
   servlet:
     multipart:
       max-file-size: 5MB
