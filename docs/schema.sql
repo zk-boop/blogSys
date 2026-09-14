@@ -1,5 +1,11 @@
 -- blogSys 数据库初始化脚本(MySQL 8)
--- 用法: mysql -uroot -p123456 < schema.sql
+--
+-- ⚠️ **这是初始化脚本,不是升级脚本**:它会把下面这 7 张表 DROP 掉再重建。
+--    只能在**空库**上跑,或者在确认可以清空这份数据时跑。库里有要紧数据时不要跑它。
+--    它会创建并使用名为 `blog_sys` 的库(见下面两行)—— 想换成别的库名,改那两行。
+--
+-- 用法: mysql -uroot -p123456 < docs/schema.sql
+-- 已有数据的升级路径:本项目当前不做自动迁移,schema 变更随版本说明手工执行。
 
 CREATE DATABASE IF NOT EXISTS blog_sys DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 USE blog_sys;
