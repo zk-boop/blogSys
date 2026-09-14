@@ -2076,3 +2076,70 @@ org.springframework.http.converter.HttpMessageNotWritableException:
 给 `/error` 一个「响应已提交就什么都不做」的自定义 error controller；或者在
 `GlobalExceptionHandler` 里显式处理 `HttpMessageNotWritableException` 并降级为 DEBUG
 （「写不出去」不是服务故障）。两者都要各自的一次对照实验。
+
+---
+
+## 36. 推送：把 70 个提交同步到公开库（2026-09-14）
+
+### 36.1 推之前扫了四类东西
+
+上一次推送是 2026-08-09，中间攒下的工作**只存在一块盘上**。推送是最便宜的保险，但那个库是
+**公开**的，所以先扫一遍再推（结果先给人看过，点头才推）。
+
+| 扫什么 | 命令（要点） | 结果 |
+|---|---|---|
+| 邮箱 / 手机号 / 真人姓名 | `git grep -nEi '<邮箱形状>\|1[3-9][0-9]{9}'` | **零命中** |
+| GitHub token / 私钥 / AWS key | `git grep -nEi 'ghp_\|github_pat_\|AKIA\|-----BEGIN'` | **零命中** |
+| 本机绝对路径 / 临时目录 / 个人目录 | `git grep -nE '[A-Z]:\\\\Users\|%TEMP%\|AppData\|\.dsh'` | **1 处真问题**（见 36.2），另 2 处只是 docs 里提到 `%TEMP%` 这个笼统说法，不含路径 |
+| 字面凭证 | `git grep -nEi 'demo1234\|admin123\|123456\|sk-…'` | 见 36.3 |
+
+顺带核对了 `backend/src/main/resources/application-local.yml`（本机 MySQL 口令）：
+**从未进过历史**（它现在在 `.gitignore` 里，而 `git log --all -- <file>` 是空的）—— 也就是说
+那份口令重来没被推上去过。
+
+### 36.2 唯一一处真改动
+
+`tools/seed/seed.mjs` 里写死了 `C:\Users\zz\.dsh\skills\imggen\gen.py` —— 一个会随仓库公开的
+**本机用户名与个人目录**。改成按技能目录的相对位置找：
+
+```js
+const IMGGEN = process.env.IMGGEN || join(homedir(), '.dsh', 'skills', 'imggen', 'gen.py')
+```
+
+装了技能的机器都能用，`IMGGEN` 仍可覆盖，README 里也写明了。dry-run 复跑正常。
+
+### 36.3 凭证：哪些早就公开，哪些是这一批新公开的
+
+**早就公开的**（上一次推送时就已在库里，与这一轮无关）：`README.md` 的 `root / 123456` 与
+`admin / admin123`、`DataInitializer` 里初始管理员的口令、`application.yml` 的 JWT 默认密钥、
+`docker-compose.yml` 的默认口令。
+
+**这一批新公开的**：种子账号统一口令 `demo1234`（`tools/seed/README.md`、`community.json`，
+以及 `docs/architecture.md` 里那句说明）。
+
+边际风险接近零 —— 默认管理员的口令本来就是公开的。真正的风险只有一条：**别拿默认口令
+部署到公网**。这条警告现在写在 `tools/seed/README.md` 顶部（那 14 个种子账号是能登录、
+能发文章的）。
+
+### 36.4 一个环境坑：配了代理而代理没起
+
+第一次推送直接失败：
+
+```
+fatal: unable to access 'https://github.com/zk-boop/blogSys.git/':
+       Failed to connect to 127.0.0.1 port 7890 after 2057 ms
+```
+
+诊断（三条命令）：代理来自 **git 的 global 配置**，而且是**只给 github.com 配的**
+（`http.https://github.com.proxy = http://127.0.0.1:7890`）；7890 端口**没有服务**；
+而直连 GitHub 是通的（`api.github.com` 返回 200）。
+
+处理：**没有改全局配置**（那是他的环境设置，代理起着的时候是有用的），只在这一次命令里旁路：
+
+```
+git -c http.https://github.com.proxy= push origin master
+→ 1721796..a2b4922  master -> master
+```
+
+推送后 `git status -sb` 显示 `## master...origin/master`，本地与远端同步。
+这一批共 **70 个提交、146 个文件、约 1.4 万行新增**。
