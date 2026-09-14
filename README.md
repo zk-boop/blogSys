@@ -112,6 +112,6 @@ AI 助手需要 OpenAI 兼容 API,全部走环境变量,不写死在代码里:
 - **SSE 真流式**:`AsyncContext` + 响应流直写,模型边生成边推送;工具调用跨帧聚合(参数分片到达,按 index 拼接)
 - **工具循环**:Agent 最多 4 轮决策→执行→喂回,工具异常回传 LLM 不中断对话
 - **安全**:6 个工具全部只读,无写操作面;`/api/ai/**` 需登录
-- **可测试**:`SseWriter` 接口解耦 Servlet API,后端 **185 个单元测试**(JUnit 5,部分用 Mockito,不起 Spring 上下文)覆盖工具循环/异常/轮数上限/推荐算法/可见性谓词;前端 `npm test` = `node --test`,**97 个用例**,零新增依赖
+- **可测试**:`SseWriter` 接口解耦 Servlet API,后端 **225 个单元测试**(JUnit 5,部分用 Mockito,不起 Spring 上下文)覆盖工具循环/异常/轮数上限/推荐算法/可见性谓词;前端 `npm test` = `node --test`,**104 个用例**,零新增依赖
 
 见 [docs/api.md](docs/api.md) 查看完整接口说明,[docs/backlog.md](docs/backlog.md) 查看计划。

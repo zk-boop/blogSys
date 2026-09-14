@@ -6,7 +6,7 @@
 
 | 部分 | 是什么 | 跑在哪 |
 |---|---|---|
-| `backend/` | Spring Boot 3.4.1 / Java 17 后端,36 个接口 | 默认 8080 |
+| `backend/` | Spring Boot 3.4.1 / Java 17 后端,37 个接口 | 默认 8080 |
 | `frontend/` | Vue 3 + Vite 前端(开发服务器或构建成静态文件) | 默认 5173 |
 | `docs/schema.sql` | MySQL 8 建表脚本(7 张表) | — |
 | `tools/seed/` | 可选:一键灌一份「像真有人在用」的演示数据,可一键清空 | — |
