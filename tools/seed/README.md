@@ -81,7 +81,7 @@ mysql -uroot -p blog_sys < tools/seed/clear.sql
 | `articles/NN-*.md` | 文章正文(Markdown,**不含标题** —— 标题在元数据里) |
 | `articles/NN-*.comments.json` | 该篇的评论树:`[{author, text, replies: [{author, text}]}]`,最多两级 |
 | `clear.sql` | 按名单清理,可单独手动执行 |
-| `seed.mjs` | 上面这些的执行者;默认 dry-run |
+| `seed.mjs` | 上面这些的执行者;默认 dry-run。**`--apply` 时会拒绝非本机的 `baseUrl`** —— 这些账号的口令是公开的,灌到对外可达的站上等于开后门(确实要跑就加 `--force-remote`) |
 | `.image-cache.json` | 出图后上传得到的 URL 与 seed(已被 `.gitignore` 忽略;删掉就会重新出图) |
 
 ## 这套内容还有第二个用途:Markdown 渲染测试集

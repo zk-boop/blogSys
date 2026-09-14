@@ -264,8 +264,28 @@ async function prepareImages(plan, tokens, cache) {
 
 // ---------------------------------------------------------------- 主流程
 
+/**
+ * 种子数据只该灌进**本机**演示库。
+ *
+ * <p>理由不是洁癖:这 14 个账号的口令是公开写在 `README.md` 里的(`demo1234`),而且它们能登录、
+ * 能发文章。往任何对外可达的站上灌一次,就等于给陌生人开了 14 个发帖账号 ——
+ * 这不是"演示数据",是后门。dry-run 只警告(它什么都不写),`--apply` 直接拒绝。
+ */
+function assertLocalTarget() {
+  const host = new URL(community.baseUrl).hostname
+  const local = ['localhost', '127.0.0.1', '::1', '0.0.0.0']
+  if (local.includes(host)) return true
+  const message =
+    `baseUrl 指向 ${host},不是本机。种子账号的口令是公开的(demo1234)且能发文章,` +
+    '灌到对外可达的站上等于开后门。确实要这么做就加 --force-remote,并自己承担后果。'
+  if (APPLY && !argv.has('--force-remote')) throw new Error(message)
+  console.log(`⚠️  ${message}`)
+  return false
+}
+
 const plan = buildPlan()
 const clearListSize = assertClearListMatches()
+assertLocalTarget()
 
 console.log(`社区种子计划:${accounts.length} 个账号(${accounts.filter((a) => a.kind === 'reader').length} 个只看不写)、` +
   `${plan.articles.length} 篇已发布、${plan.draft ? 1 : 0} 篇草稿、` +
