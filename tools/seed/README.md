@@ -23,7 +23,7 @@ node tools/seed/seed.mjs --apply --skip-images
 
 前提:后端在 `http://localhost:8080` 上跑着(可用 `community.json` 的 `baseUrl` 改),
 本机有 `mysql` 客户端。出图需要本机 ComfyUI(`imggen` 技能,端口 8888);
-不想出图就加 `--skip-images`。
+不想出图就加 `--skip-images`。出图脚本默认按 `~/.dsh/skills/imggen/gen.py` 找(不写死任何机器与用户名),装在别处时用 `IMGGEN` 环境变量指定。
 
 清理(独立于脚本,随时可以手动跑):
 

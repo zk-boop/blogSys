@@ -33,6 +33,7 @@
  */
 import { execFileSync } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
+import { homedir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -41,8 +42,14 @@ const ARTICLES_DIR = join(HERE, 'articles')
 const CLEAR_SQL = join(HERE, 'clear.sql')
 const IMAGE_CACHE = join(HERE, '.image-cache.json')
 
-/** imggen 的命令行工具;换机器时用环境变量覆盖,不要把路径散到别处。 */
-const IMGGEN = process.env.IMGGEN || 'C:\\Users\\zz\\.dsh\\skills\\imggen\\gen.py'
+/**
+ * imggen 的命令行工具。
+ *
+ * <p>默认按**技能目录的相对位置**找(技能装在 {@code ~/.dsh/skills/imggen/gen.py}),
+ * 所以它不绑定某一台机器、也不在代码里写死谁的用户名;装了别处就用环境变量 `IMGGEN` 覆盖。
+ * 找不到时只有出图那一步会失败,`--skip-images` 与其它步骤都不受影响。
+ */
+const IMGGEN = process.env.IMGGEN || join(homedir(), '.dsh', 'skills', 'imggen', 'gen.py')
 /** 出图落在系统的临时目录:图是内容,不进仓库;复现靠 seed 与提示词,两者都在 community.json 里。 */
 const IMAGE_DIR = process.env.SEED_IMAGE_DIR || join(process.env.TEMP || '/tmp', 'blogsys-seed-images')
 
