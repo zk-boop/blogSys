@@ -8,7 +8,12 @@ export const authApi = {
 }
 
 export const userApi = {
-  profile: (id) => http.get(`/users/${id}`),
+  /**
+   * 公开资料。`options` 透传给 http(见 `http.js` 的 `silent`):博主主页要自己显示
+   * 「资料加载失败」,而详情页那张作者卡只是附赠 —— 同一个接口,两种失败待遇,
+   * 所以静默与否由调用方决定,不写死在这里。
+   */
+  profile: (id, options) => http.get(`/users/${id}`, options),
   articles: (id, params) => http.get(`/users/${id}/articles`, { params }),
 }
 
@@ -17,6 +22,13 @@ export const articleApi = {
   hot: () => http.get('/articles/hot'),
   detail: (id) => http.get(`/articles/${id}`),
   editDetail: (id) => http.get(`/articles/${id}/edit`),
+  /**
+   * 上一篇 / 下一篇。响应形状已定死:`{ prev, next }`,每项只有 `{ id, title }`,
+   * 没有那一侧就是 `null`。`prev` 指更早发布的。
+   *
+   * `silent`:它是导航,不是内容 —— 失败时详情页整块不显示,读者不该为此吃一个错误提示。
+   */
+  neighbors: (id) => http.get(`/articles/${id}/neighbors`, { silent: true }),
   myArticles: (params) => http.get('/users/me/articles', { params }),
   myFavorites: (params) => http.get('/users/me/favorites', { params }),
   favorite: (id) => http.post(`/articles/${id}/favorite`),
