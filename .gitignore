@@ -31,3 +31,6 @@ backend/uploads/
 
 # Local config with credentials
 backend/src/main/resources/application-local.yml
+
+# Seed tooling: 出图缓存(记录每张图上传后的 URL 与 seed;删掉就会重新出图)
+tools/seed/.image-cache.json

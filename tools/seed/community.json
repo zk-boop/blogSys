@@ -1,0 +1,418 @@
+{
+  "_readme": "社区种子数据的唯一真源。正文与评论分别在 articles/*.md 与 articles/*.comments.json;这里只放账号、文章元数据与互动计划。schema 说明见 README.md。",
+  "password": "demo1234",
+  "baseUrl": "http://localhost:8080",
+  "mysql": {
+    "user": "root",
+    "password": "123456",
+    "database": "blog_sys"
+  },
+  "accounts": [
+    {
+      "username": "haitang",
+      "nickname": "海棠",
+      "avatar": "https://api.dicebear.com/9.x/avataaars/svg?seed=haitang",
+      "kind": "writer",
+      "note": "写了十多年博客的老手,后端与企业系统,写长文与复盘"
+    },
+    {
+      "username": "zhouyu",
+      "nickname": "周予",
+      "avatar": "https://api.dicebear.com/9.x/avataaars/svg?seed=zhouyu",
+      "kind": "writer",
+      "note": "前端与工具链爱好者,爱折腾编辑器"
+    },
+    {
+      "username": "chenmo",
+      "nickname": "陈默",
+      "avatar": "https://api.dicebear.com/9.x/avataaars/svg?seed=chenmo",
+      "kind": "writer",
+      "note": "后端工程师,专写排查与性能"
+    },
+    {
+      "username": "linwan",
+      "nickname": "林晚",
+      "avatar": "https://api.dicebear.com/9.x/avataaars/svg?seed=linwan",
+      "kind": "writer",
+      "note": "生活随笔写手,做饭、拍照、逛菜市场"
+    },
+    {
+      "username": "suqing",
+      "nickname": "苏晴",
+      "avatar": "https://api.dicebear.com/9.x/avataaars/svg?seed=suqing",
+      "kind": "writer",
+      "note": "读书与方法论,关注专注力与笔记法"
+    },
+    {
+      "username": "wangkai",
+      "nickname": "王恺",
+      "avatar": "https://api.dicebear.com/9.x/avataaars/svg?seed=wangkai",
+      "kind": "writer",
+      "note": "潜水多年的读者,几乎不写东西;脚本最后会把他封禁,用来让后台的封禁状态有真实样本"
+    },
+    {
+      "username": "moyu",
+      "nickname": "墨鱼",
+      "avatar": "https://api.dicebear.com/9.x/avataaars/svg?seed=moyu",
+      "kind": "reader",
+      "note": "只看不写的读者"
+    },
+    {
+      "username": "qingshan",
+      "nickname": "青山",
+      "avatar": "https://api.dicebear.com/9.x/avataaars/svg?seed=qingshan",
+      "kind": "reader",
+      "note": "只看不写的读者"
+    },
+    {
+      "username": "xiaoman",
+      "nickname": "小满",
+      "avatar": "https://api.dicebear.com/9.x/avataaars/svg?seed=xiaoman",
+      "kind": "reader",
+      "note": "只看不写的读者"
+    },
+    {
+      "username": "heyan",
+      "nickname": "何言",
+      "avatar": "https://api.dicebear.com/9.x/avataaars/svg?seed=heyan",
+      "kind": "reader",
+      "note": "只看不写的读者"
+    },
+    {
+      "username": "nanfeng",
+      "nickname": "南风",
+      "avatar": "https://api.dicebear.com/9.x/avataaars/svg?seed=nanfeng",
+      "kind": "reader",
+      "note": "只看不写的读者"
+    },
+    {
+      "username": "yizhi",
+      "nickname": "一纸",
+      "avatar": "https://api.dicebear.com/9.x/avataaars/svg?seed=yizhi",
+      "kind": "reader",
+      "note": "只看不写的读者"
+    },
+    {
+      "username": "tongtong",
+      "nickname": "彤彤",
+      "avatar": "https://api.dicebear.com/9.x/avataaars/svg?seed=tongtong",
+      "kind": "reader",
+      "note": "只看不写的读者"
+    },
+    {
+      "username": "shier",
+      "nickname": "十二",
+      "avatar": "https://api.dicebear.com/9.x/avataaars/svg?seed=shier",
+      "kind": "reader",
+      "note": "只看不写的读者"
+    }
+  ],
+  "banned": [
+    "wangkai"
+  ],
+  "articles": [
+    {
+      "key": "a1",
+      "file": "01-wordpress-to-springboot.md",
+      "commentsFile": "01-wordpress-to-springboot.comments.json",
+      "title": "把博客从 WordPress 搬到自建站点:一次迁移的完整记录",
+      "author": "haitang",
+      "tags": [
+        "#技术",
+        "#Java",
+        "#部署",
+        "#迁移"
+      ],
+      "summary": "从 2016 年那台年付两百六的共享主机上把 WordPress 搬下来:21 行清单最后做完 17 行,以及我决定砍掉的那些东西。",
+      "publishedAt": "2026-04-08T20:40:00",
+      "views": 604,
+      "likes": [
+        "zhouyu",
+        "chenmo",
+        "suqing",
+        "linwan",
+        "moyu",
+        "qingshan"
+      ],
+      "favorites": [
+        "zhouyu",
+        "chenmo",
+        "moyu"
+      ],
+      "cover": {
+        "style": "scene",
+        "preset": "scene",
+        "seed": 101,
+        "prompt": "a wooden desk photographed from above with two open laptops side by side, one older and one newer, a few cables coiled between them, a notebook and a cup of tea at the edge, soft window light, calm documentary style, no text"
+      },
+      "images": {
+        "img1": {
+          "style": "scene",
+          "preset": "scene",
+          "seed": 102,
+          "prompt": "a closer photo of the same wooden desk, showing a hand-written migration checklist on paper next to a laptop showing a plain dark editor window, warm afternoon light, shallow depth of field, no readable text"
+        }
+      }
+    },
+    {
+      "key": "a2",
+      "file": "02-markdown-support.md",
+      "commentsFile": "02-markdown-support.comments.json",
+      "title": "一个自建博客该支持哪些 Markdown:我最后留下的和删掉的",
+      "author": "zhouyu",
+      "tags": [
+        "#技术",
+        "#写作",
+        "#Markdown",
+        "#取舍"
+      ],
+      "summary": "渲染器上线三天,配置从 11 行涨到 60 多行,我又伸手关掉了三个 —— 判断标准只有一条:这个语法是写给自己的笔记,还是发给别人读的文章。",
+      "publishedAt": "2026-05-21T22:15:00",
+      "views": 256,
+      "likes": [
+        "haitang",
+        "chenmo",
+        "yizhi",
+        "tongtong"
+      ],
+      "favorites": [
+        "chenmo"
+      ],
+      "cover": {
+        "style": "scene",
+        "preset": "scene",
+        "seed": 201,
+        "prompt": "an open paper notebook with a fountain pen resting on it, next to a laptop screen showing an abstract page of neatly laid out paragraphs, on a bright desk, flat graphic and calm, no readable text"
+      }
+    },
+    {
+      "key": "a3",
+      "file": "03-mysql-slow-query.md",
+      "commentsFile": "03-mysql-slow-query.comments.json",
+      "title": "一次 MySQL 慢查询排查:从 213ms 到 0.171ms",
+      "author": "chenmo",
+      "tags": [
+        "#技术",
+        "#MySQL",
+        "#性能优化",
+        "#排查"
+      ],
+      "summary": "列表接口的 P99 从 40 毫秒爬到 213 毫秒,没报错、没投诉。三天之后查明白:不是索引不够,是优化器把连接顺序翻了过来。",
+      "publishedAt": "2026-06-30T21:05:00",
+      "views": 492,
+      "likes": [
+        "haitang",
+        "zhouyu",
+        "xiaoman",
+        "heyan",
+        "nanfeng"
+      ],
+      "favorites": [
+        "zhouyu",
+        "heyan"
+      ],
+      "cover": {
+        "style": "scene",
+        "preset": "scene",
+        "seed": 301,
+        "prompt": "a dim home office at night, two monitors glowing with abstract database dashboards and query plans rendered as soft blue rectangles, a mug and a notebook on the desk, moody cinematic lighting, no readable text"
+      }
+    },
+    {
+      "key": "a4",
+      "file": "04-market-at-dusk.md",
+      "commentsFile": "04-market-at-dusk.comments.json",
+      "title": "夏日傍晚的菜市场",
+      "author": "linwan",
+      "tags": [
+        "#随笔",
+        "#夏日",
+        "#城市观察",
+        "#菜市场"
+      ],
+      "summary": "六月的傍晚,临时市场从两头摆进来:剁排骨的声音、切开一角的西瓜、卖丝瓜的大姐说弯的更嫩。",
+      "publishedAt": "2026-07-19T19:30:00",
+      "views": 231,
+      "likes": [
+        "suqing",
+        "haitang",
+        "shier",
+        "qingshan",
+        "wangkai"
+      ],
+      "favorites": [
+        "suqing"
+      ],
+      "cover": {
+        "style": "scene",
+        "preset": "scene",
+        "seed": 401,
+        "prompt": "a lively open-air vegetable market at golden hour, baskets of tomatoes and green vegetables, warm low sunlight through a canopy, a vendor in the distance, soft film grain, documentary street photography, no text"
+      }
+    },
+    {
+      "key": "a5",
+      "file": "05-paper-notes.md",
+      "commentsFile": "05-paper-notes.comments.json",
+      "title": "我为什么开始用纸笔记事",
+      "author": "suqing",
+      "tags": [
+        "#随笔",
+        "#写作",
+        "#纸笔",
+        "#笔记法"
+      ],
+      "summary": "五块钱买的一本方格本,前十几页是被写过的会议记录。真正开始在上面写字是三个星期之后 —— 那时我的笔记库里躺着三千条我再也翻不动的记录。",
+      "publishedAt": "2026-08-09T10:20:00",
+      "views": 174,
+      "likes": [
+        "linwan",
+        "yizhi",
+        "moyu"
+      ],
+      "favorites": [
+        "linwan"
+      ],
+      "cover": {
+        "style": "scene",
+        "preset": "scene",
+        "seed": 501,
+        "prompt": "an open lined paper notebook on a light wooden table with a black fountain pen and a small cup of coffee, morning light from the left, minimal and warm, top down view, shallow depth of field, no readable text"
+      }
+    },
+    {
+      "key": "a6",
+      "file": "06-a-weekend-alone.md",
+      "commentsFile": "06-a-weekend-alone.comments.json",
+      "title": "一个人的周末:做饭、洗衣、看云",
+      "author": "linwan",
+      "tags": [
+        "#随笔",
+        "#时间感悟",
+        "#独处",
+        "#周末"
+      ],
+      "summary": "周六早上七点二十被收废品的喇叭吵醒。半颗白菜、三个鸡蛋、冻了两周的五花肉,以及一整个下午的云。",
+      "publishedAt": "2026-09-13T17:45:00",
+      "views": 143,
+      "likes": [
+        "suqing",
+        "nanfeng",
+        "tongtong"
+      ],
+      "favorites": [],
+      "cover": {
+        "style": "scene",
+        "preset": "scene",
+        "seed": 601,
+        "prompt": "a small clean kitchen in the late afternoon, a pot of noodles steaming on the stove, laundry hanging outside the window, warm sunlight across the counter, quiet and lived-in, film photography look, no text"
+      },
+      "images": {
+        "img1": {
+          "style": "scene",
+          "preset": "scene",
+          "seed": 602,
+          "prompt": "a simple bowl of noodles with greens and a soft boiled egg on a worn wooden table, chopsticks resting on the bowl, warm afternoon light, close up food photography, no text"
+        },
+        "img2": {
+          "style": "scene",
+          "preset": "scene",
+          "seed": 603,
+          "prompt": "a view out of an apartment window of a summer evening sky with layered clouds turning pink and grey, a clothesline in the foreground, calm and empty, shot on film, no text"
+        }
+      }
+    },
+    {
+      "key": "a7",
+      "file": "07-deep-work.md",
+      "commentsFile": "07-deep-work.comments.json",
+      "title": "读《深度工作》:我删掉了手机上的 27 个应用",
+      "author": "suqing",
+      "tags": [
+        "#读书",
+        "#时间感悟",
+        "#专注",
+        "#深度工作"
+      ],
+      "summary": "书是旧书摊上十二块钱买的,封面泡过水。读完前两章我数了数手机:一百零四个应用,我主动装的不到三十个。",
+      "publishedAt": "2026-08-29T21:40:00",
+      "views": 308,
+      "likes": [
+        "haitang",
+        "linwan",
+        "chenmo",
+        "xiaoman",
+        "shier",
+        "heyan"
+      ],
+      "favorites": [
+        "haitang",
+        "linwan"
+      ],
+      "cover": {
+        "style": "scene",
+        "preset": "scene",
+        "seed": 701,
+        "prompt": "a minimal desk with a closed book, a glass of tea and a smartphone lying face down, one small plant, clean neutral background, soft diffused daylight, calm still life, no text"
+      }
+    },
+    {
+      "key": "a8",
+      "file": "08-three-years-of-blogging.md",
+      "commentsFile": "08-three-years-of-blogging.comments.json",
+      "title": "写了三年博客,我学到的 10 件事",
+      "author": "haitang",
+      "tags": [
+        "#随笔",
+        "#写作",
+        "#长文",
+        "#复盘",
+        "#三年"
+      ],
+      "summary": "三年、六十三篇文章、四篇删掉、两篇挂着「已过时」。这十条按我踩坑的顺序排,不按重要程度排。",
+      "publishedAt": "2026-09-14T09:10:00",
+      "views": 876,
+      "likes": [
+        "zhouyu",
+        "chenmo",
+        "linwan",
+        "suqing",
+        "wangkai",
+        "moyu",
+        "qingshan",
+        "xiaoman",
+        "heyan",
+        "nanfeng",
+        "yizhi",
+        "tongtong"
+      ],
+      "favorites": [
+        "zhouyu",
+        "chenmo",
+        "suqing",
+        "linwan",
+        "moyu",
+        "xiaoman"
+      ],
+      "cover": {
+        "style": "scene",
+        "preset": "scene",
+        "seed": 801,
+        "prompt": "a writers desk after three years of work, an open laptop showing an abstract long document, sticky notes and index cards pinned on the wall behind, stacked notebooks, warm lamp light, lived-in and slightly messy, no readable text"
+      }
+    }
+  ],
+  "draft": {
+    "key": "d1",
+    "file": "09-draft-editor-config.md",
+    "title": "编辑器配置迁移到 2026:我的第一版草稿",
+    "author": "zhouyu",
+    "tags": [
+      "#技术",
+      "#工具链"
+    ],
+    "summary": "还只写了个开头:旧的编辑器配置是三年里一层层叠上去的,注释比代码多,而当年的原因早就不成立了。",
+    "createdAt": "2026-09-13T23:20:00",
+    "note": "唯一一篇草稿:让「我的文章」与后台的草稿筛选、以及他人不可见这条规则都有真实样本"
+  }
+}
