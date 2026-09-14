@@ -24,9 +24,9 @@
 |---|---|---|
 | 全文搜索升级 | 待做 | 当前 LIKE,v3 可换 Elasticsearch |
 | 私信 | 待做 | 独立表 |
-| RSS 订阅 | 待做 | 读取文章列表即可实现 |
+| ~~RSS 订阅~~ | **已完成** | `controller/RssController.java` 的 `GET /rss`:RSS 2.0、最新 20 篇。订阅源不发送 `Authorization`,viewer 恒为匿名,所以草稿与被封禁作者都不在其中 —— 这个答案直接来自 `visibility.articles()`。接口口径见 `docs/api.md` |
 | 文章审核流 | 待做 | 依赖 status 字段扩展 |
-| 用户头像上传 | 待做 | 当前 URL 输入/DiceBear 默认 |
+| ~~用户头像上传~~ | **已完成** | 后端 `controller/UploadController.saveAvatar`(`type=avatar`,居中裁 1:1 再缩到 256x256 的 jpg);前端 `components/ImageCropUpload.vue` 只负责裁剪与上传(`views/Profile.vue` 接它)。上传规则见 `docs/api.md` |
 
 ## 开发原则
 
@@ -54,9 +54,12 @@
 | 可见性的 DB 层测试 | 待决策(依赖事实已查明) | 谓词活在 SQL 里,单测的 mapper 是 mock,证明不了它。现状靠「谓词文本断言 + 一次性真实数据核对」。要能反复跑需要引入 H2(`MODE=MySQL`)或 Testcontainers。**2026-09-13 核实:两条路现在都不通** —— Docker 守护进程未运行(Testcontainers 直接失败);H2 本机只有 2.1.214/2.2.224/2.4.240,而 Boot 3.4.1 的 BOM 钉的是**不在本机**的 2.3.232(不写 `<version>` 就离线解析失败);且 `docs/schema.sql` 对 H2 `MODE=MySQL` 有 3 处硬阻塞(`CREATE DATABASE`、库级 `DEFAULT CHARACTER SET`、内联 `ON UPDATE CURRENT_TIMESTAMP` ×2)。 |
 | 列表查询的连接顺序 | 待做 | 见 `architecture.md` §7.4:实测 213ms vs 零 DDL 加一个 hint 的 0.171ms。独立于可见性 |
 | ~~AI 工具路径的身份与只读~~ | **已完成** | `architecture.md` §11。候选 02 |
-| `docs/schema.sql` 漏 DROP `favorites` | 待做 | `DROP TABLE IF EXISTS` 前奏列了 6 张表,独漏第 7 张 `favorites`(建表在最后)。照 `README.md:46` 的流程重跑会因表已存在而失败。一次提交即可 |
+| ~~`docs/schema.sql` 漏 DROP `favorites`~~ | **已完成** | `DROP TABLE IF EXISTS` 此前列了 6 张表,独漏第 7 张 `favorites`(建表在最后)。照 `README.md:46` 的流程重跑会因表已存在而失败。现已补进 `docs/schema.sql:11`,紧挨同为「文章×用户」关联表的 `likes` |
 | 前端:写接口 404 的文案 | 待做 | 三个写接口现在会返回 404,前端需要相应提示 |
-| 前端:outlet route identity | 待做 | 点相关推荐 URL 变了正文不变;`Write.vue` 的 `onMounted` 注册了两次 |
+| ~~前端:outlet route identity~~ | **已完成** | 点相关推荐 URL 变了正文不变;`Write.vue` 的 `onMounted` 注册了两次。标识收进 `frontend/src/router/identity.js` 的纯函数 `outletKey`,详见 `docs/architecture.md` §12 |
+| `hot` 接口的 `size` 没有下限 | 待做(2026-09-14 修文档时发现) | `ArticleService.hot` 只把 `size` 钳到**上限 20**,不看下限:`?size=-1` 会拼出 `LIMIT -1` 直接 500,`?size=0` 返回空列表。它是**公开**接口,所以这是一次「畸形请求得到 500 而不是 400」。一行 `Math.max(1, …)` 就能收掉,但它是一次行为变更(新增校验),没有顺手改 |
+| RSS 的站点地址写死在代码里 | 待做(2026-09-14 发现) | `RssController.SITE_URL` 硬编码 `http://localhost:8080`,条目的 `link`/`guid` 全按它拼 —— 换域名必须改代码并重新部署。应做成配置项(如 `blogsys.site-url`),让「站点对外地址」只有一处 |
+| backlog 各节的测试数不是当前值 | 说明(2026-09-14) | 下文各节的「测试 x → y」记的都是**当时**的累计值,不要拿它们对总数。当前:后端 **185** 个 `@Test`、前端 **97** 个用例 |
 
 ## v5 已完成:AI 工具路径的身份与只读(候选 02)
 

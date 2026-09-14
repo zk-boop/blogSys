@@ -25,6 +25,7 @@
 | 方法 | 路径 | 说明 |
 |---|---|---|
 | GET | `/api/articles?page=&size=&tagId=&keyword=` | 文章分页列表(公开),`keyword` 匹配标题/内容 |
+| GET | `/api/articles/hot?size=` | 热门文章(公开),按浏览量倒序,只含浏览量 > 0 的文章;`size` 默认 5,**服务端上限 20** |
 | GET | `/api/articles/{id}` | 文章详情(公开;草稿仅作者/管理员,且浏览量不增加) |
 | GET | `/api/articles/{id}/edit` | 文章编辑回填(作者或管理员,浏览量不变) |
 | POST | `/api/articles` | 发布/存草稿,body: `{title, content, summary?, cover?, tagNames?, draft?}` |
@@ -45,6 +46,19 @@
 |---|---|---|
 | POST | `/api/articles/{articleId}/like` | 点赞/取消点赞(切换),返回 `{liked, likeCount}` |
 
+## 收藏
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| POST | `/api/articles/{id}/favorite` | 收藏/取消收藏(切换),返回 `{favorited}` —— 只有状态,没有计数 |
+| GET | `/api/users/me/favorites?page=&size=` | 我的收藏分页,按收藏时间倒序 |
+
+两个都以「文章此刻可见」为前提:不可见的文章返回 404,而不是 403(见 `docs/adr/0001`)。
+
+收藏列表返回的是文章列表项,不是收藏记录 —— 因此带 `coverThumb` 等列表字段;
+文章详情里的 `favorited` 就是这份集合的成员判定。取消收藏后文章从列表消失,
+而 `total` 与当页条数出自同一次查询(不会出现「页内条数少于 `size` 而 total 虚高」)。
+
 ## 标签
 
 | 方法 | 路径 | 说明 |
@@ -62,9 +76,18 @@
 
 | type | 处理 |
 |---|---|
-| `avatar` | 居中裁剪 1:1 并缩放 256x256,输出 jpg |
-| `cover` | 保留原图 + 生成 640x360 缩略图,返回 `{url, thumbUrl}` |
-| `content` | 原样保存,返回 `{url}` |
+| `avatar` | 居中裁剪 1:1 并缩放 256x256,输出 jpg,返回 `{url}` |
+| `cover` | 居中裁剪 16:9 并缩放 1280x720,输出 jpg + 640x360 缩略图,返回 `{url, thumbUrl}` |
+| `content` | 原图原样保存 + 640x360 缩略图,返回 `{url, thumbUrl}` |
+
+`thumbUrl` 的缺席是**有意义的**,不是错误:图片解码不了(比如文件名是 `.gif` 而内容不是图)时
+确实没有缩略图,响应里就不会有 `thumbUrl` —— 服务端不声称自己写了不存在的文件。
+`type` 只认上表三个值,其余一律 400,不会静默按 `content` 存下去。
+
+**`content` 为什么也写缩略图**:列表页的 `coverThumb` 是从文件名反推缩略图的
+(`/uploads/X.ext` → `/uploads/X-thumb.jpg`),而封面是个自由文本 URL 字段 ——
+作者可以把正文图片的 URL 粘进封面。若正文上传不写缩略图,那次粘贴就必然 404。
+命名约定因此对**每一个能解码的上传**都成立,而不只对 `cover` 成立。
 
 文章列表接口会附带 `coverThumb` 字段(封面缩略图 URL,供列表页使用;非 `/uploads/` 来源或 webp 则与 `cover` 相同)。
 
@@ -112,6 +135,44 @@ Agent 可用工具:`searchArticles(keyword)`、`getArticleDetail(id)`、`getUser
 | 方法 | 路径 | 说明 |
 |---|---|---|
 | GET | `/api/articles/{id}/recommend?size=` | 基于标签重叠与标题/摘要关键词打分的相关文章(不含 AI 依赖),返回文章列表,含 `recommendScore` |
+
+## RSS 订阅(公开)
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| GET | `/rss` | RSS 2.0,`Content-Type: application/rss+xml`;最新 20 篇,按发布时间倒序 |
+
+订阅源是最公开的出口:**不发送 `Authorization`,viewer 恒为匿名**,所以草稿与被封禁作者的文章
+都不在其中 —— 读者一旦订阅过,内容就留在别人的阅读器里,事后封禁追不回来。
+条目带 `title`/`link`/`guid`/`description`(摘要)/`author`/`pubDate`,
+链接按 `SITE_URL`(当前是 `http://localhost:8080`)拼,换域名要改 `RssController.SITE_URL`。
+
+## 管理后台(全部 ADMIN)
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| GET | `/api/admin/stats` | 全站统计:用户/文章/评论/标签/点赞总数、今日新增、`hotArticles` 前 5 |
+| GET | `/api/admin/users?page=&size=&keyword=` | 用户分页,`keyword` 匹配用户名/昵称 |
+| PUT | `/api/admin/users/{id}/status` | 封禁/解封,body: `{status}`,`0`=正常 `1`=封禁;未知值或 `null` 一律 400,不猜默认值 |
+| PUT | `/api/admin/users/{id}/role` | 改角色,body: `{role}`,只有 `ADMIN` 被当成管理员,**其余任何值都落回 `USER`**(与 `status` 不同,这里不做 400) |
+| GET | `/api/admin/articles?page=&size=&keyword=&status=&userId=` | 文章分页(含草稿) |
+| DELETE | `/api/admin/articles/{id}` | 删除文章(级联删评论/点赞/收藏) |
+| GET | `/api/admin/comments?page=&size=&keyword=` | 评论分页(含被封禁作者的评论) |
+| DELETE | `/api/admin/comments/{id}` | 删除评论(删一级评论连带回复) |
+| GET | `/api/admin/tags` | 全部标签(不分页) |
+| PUT | `/api/admin/tags/{id}` | 重命名标签,body: `{name}` |
+| DELETE | `/api/admin/tags/{id}` | 删除标签 |
+
+`/api/admin/**` 整段是 `hasRole("ADMIN")`,非管理员得到 403。管理员的读路径**没有可见性谓词**
+(`ArticleQuery`:管理员完全不追加条件),所以草稿与被封禁作者的内容都看得到 ——
+这与公开接口刻意不同(见 `architecture.md` §10)。
+
+两个用户写接口合计三条守卫,消息就是它们拒绝的理由:不能封禁/解封**自己**、不能修改**自己的角色**、
+不能把 ADMIN 账号**封禁**;目标用户不存在则 404。
+
+`GET /api/admin/users` 里的 `articleCount` 是**全部文章数(含草稿)**,
+而 `GET /api/users/{id}` 里同名字段是**已发布文章数**:同一个字段名两种含义,是刻意保留的既有契约
+(改动它会动到前端契约,所以只在两处写明,不静默改名)。
 
 ## 错误码
 
