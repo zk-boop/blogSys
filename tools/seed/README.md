@@ -86,7 +86,7 @@ mysql -uroot -p blog_sys < tools/seed/clear.sql
 
 ## 这套内容还有第二个用途:Markdown 渲染测试集
 
-八篇正文是**刻意**按结构分工写的,所以站点的 Markdown 管线哪里缺东西,翻一遍就看得出来:
+八篇正文是**刻意**按结构分工写的，而且**每篇至少 3 个 ## 小标题** —— 站点的目录侧栏靠正文里的标题生成，并且要求标题数 > 1 才渲染（rontend/src/utils/markdown.js 的 xtractToc）。漏了小标题，目录就是空的（曾经真的漏过一次，见 docs/architecture.md §37）。,所以站点的 Markdown 管线哪里缺东西,翻一遍就看得出来:
 
 | 文章 | 侧重于 |
 |---|---|
