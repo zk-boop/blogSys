@@ -6,6 +6,7 @@ import com.blogsys.dto.ArticleRequest;
 import com.blogsys.service.ArticleService;
 import com.blogsys.vo.ArticleDetailVO;
 import com.blogsys.vo.ArticleListItemVO;
+import com.blogsys.vo.ArticleNeighborsVO;
 import com.blogsys.vo.FavoriteVO;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -55,6 +56,12 @@ public class ArticleController {
     @GetMapping("/{id}/edit")
     public Result<ArticleDetailVO> editDetail(@PathVariable Long id) {
         return Result.ok(articleService.editDetail(id));
+    }
+
+    @GetMapping("/{id}/neighbors")
+    public Result<ArticleNeighborsVO> neighbors(@PathVariable Long id) {
+        // 一次纯读:不记浏览。否则「点一次下一篇」也会把那篇文章顶进热门榜。
+        return Result.ok(articleService.neighbors(id));
     }
 
     @PostMapping

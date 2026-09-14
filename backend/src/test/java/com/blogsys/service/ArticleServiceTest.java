@@ -25,6 +25,7 @@ import com.blogsys.visibility.Viewer;
 import com.blogsys.visibility.ViewerSource;
 import com.blogsys.visibility.Visibility;
 import com.blogsys.vo.ArticleDetailVO;
+import com.blogsys.vo.ArticleNeighborsVO;
 import org.apache.ibatis.builder.MapperBuilderAssistant;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
@@ -37,17 +38,22 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 
+import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
+import java.util.regex.Pattern;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -321,6 +327,154 @@ class ArticleServiceTest {
         verify(likeMapper, never()).selectCount(any());
     }
 
+    // ---------- 上一篇 / 下一篇:列表里的邻居 ----------
+
+    /** 与 {@code ArticleQueryTest} 同一个判据:(已发布 OR 是我的草稿) 被括号整体包住。 */
+    private static final Pattern PARENTHESIZED_OR_GROUP =
+            Pattern.compile("\\(\\s*status = #\\{[^}]+} OR user_id = #\\{[^}]+}\\s*\\)");
+
+    /** 邻居是按时间排的,所以这组测试需要一批带 created_at 的文章。 */
+    private static final LocalDateTime T0 = LocalDateTime.of(2026, 1, 1, 10, 0);
+
+    private static Article publishedAt(long id, String title, LocalDateTime createdAt) {
+        Article article = article(id, 3L, 1, 0);
+        article.setTitle(title);
+        article.setCreatedAt(createdAt);
+        return article;
+    }
+
+    @Test
+    @DisplayName("中间的文章:prev 与 next 各是时间线上紧挨着的一篇")
+    void neighbors_shouldReturnBothSides_whenInTheMiddle() {
+        when(articleMapper.selectOne(any())).thenReturn(publishedAt(18L, "当前", T0.plusDays(1)));
+        stubNeighborRows(publishedAt(17L, "更早", T0), publishedAt(19L, "更晚", T0.plusDays(2)));
+
+        ArticleNeighborsVO vo = serviceFor(Viewer.anonymous()).neighbors(18L);
+
+        assertEquals(17L, vo.getPrev().getId());
+        assertEquals("更早", vo.getPrev().getTitle());
+        assertEquals(19L, vo.getNext().getId());
+        assertEquals("更晚", vo.getNext().getTitle());
+    }
+
+    @Test
+    @DisplayName("第一篇:prev 是 null —— 不是 404,也不是一个空对象")
+    void neighbors_shouldReturnNullPrev_whenNothingIsEarlier() {
+        when(articleMapper.selectOne(any())).thenReturn(publishedAt(1L, "第一篇", T0));
+        // mock 让「更早的候选」为空,这正是第一篇在库里的样子
+        stubNeighborRows(null, publishedAt(2L, "第二篇", T0.plusDays(1)));
+
+        ArticleNeighborsVO vo = serviceFor(Viewer.anonymous()).neighbors(1L);
+
+        assertNull(vo.getPrev(), "没有更早的文章就是没有,前端靠 null 决定要不要画这一行");
+        assertEquals(2L, vo.getNext().getId());
+    }
+
+    @Test
+    @DisplayName("最后一篇:next 是 null,prev 照旧")
+    void neighbors_shouldReturnNullNext_whenNothingIsLater() {
+        when(articleMapper.selectOne(any())).thenReturn(publishedAt(9L, "最后一篇", T0.plusDays(9)));
+        stubNeighborRows(publishedAt(8L, "倒数第二篇", T0.plusDays(8)), null);
+
+        ArticleNeighborsVO vo = serviceFor(Viewer.anonymous()).neighbors(9L);
+
+        assertNull(vo.getNext());
+        assertEquals(8L, vo.getPrev().getId());
+    }
+
+    @Test
+    @DisplayName("不可见:与详情同一个 404,而且一条候选查询都不发")
+    void neighbors_shouldThrowCanonical404_whenNotVisible() {
+        when(articleMapper.selectOne(any())).thenReturn(null);
+
+        BizException e = assertThrows(BizException.class,
+                () -> serviceFor(Viewer.anonymous()).neighbors(5L));
+
+        assertEquals(404, e.getCode());
+        assertEquals("文章不存在", e.getMessage());
+        // 先算邻居再判可见性也「能用」,但会为一次注定 404 的请求白跑两次查询;
+        // 先判定则不可见的文章连候选集合都不会被碰到
+        verify(articleMapper, never()).selectList(any());
+    }
+
+    @Test
+    @DisplayName("方向与兜底:prev 取最近的一个更早者(倒序),next 取最近的一个更晚者(正序)")
+    void neighbors_shouldCompareOnCreatedAt_thenFallBackToId() {
+        when(articleMapper.selectOne(any())).thenReturn(publishedAt(18L, "当前", T0));
+        stubNeighborRows(null, null);
+
+        serviceFor(Viewer.anonymous()).neighbors(18L);
+        List<AbstractWrapper<Article, ?, ?>> wrappers = neighborWrappers();
+        String prev = wrappers.get(0).getSqlSegment();
+        String next = wrappers.get(1).getSqlSegment();
+
+        // 只比 created_at 的话,同一时刻发布的两篇会互相排除 —— 各自跳过一个邻居。
+        // 加上 id 之后 (created_at, id) 是全序,每篇(除首尾)恰好一个前驱、一个后继。
+        assertTrue(prev.contains("created_at <"), "prev 取更早的,实际: " + prev);
+        assertTrue(prev.contains("created_at = #"), "并列时间戳也要成为候选,实际: " + prev);
+        assertTrue(prev.contains("id <"), "并列时按 id 兜底,实际: " + prev);
+        assertTrue(prev.contains("created_at DESC") && prev.contains("id DESC"),
+                "从最近的一个更早者开始取(取一条为限),实际: " + prev);
+
+        assertTrue(next.contains("created_at >"), "next 取更晚的,实际: " + next);
+        assertTrue(next.contains("created_at = #"), "并列时间戳也要成为候选,实际: " + next);
+        assertTrue(next.contains("id >"), "并列时按 id 兜底,实际: " + next);
+        assertTrue(next.contains("created_at ASC") && next.contains("id ASC"),
+                "从最近的一个更晚者开始取(取一条为限),实际: " + next);
+    }
+
+    @Test
+    @DisplayName("候选集合走列表那条作用域:已发布 + 作者未封禁,登录者也不带自己的草稿")
+    void neighbors_shouldPickCandidates_throughTheListScope() {
+        when(articleMapper.selectOne(any())).thenReturn(publishedAt(18L, "当前", T0));
+        stubNeighborRows(null, null);
+
+        // 换成一个登录者:若候选查询顺手登记了 includingOwnDrafts,下面就会多出草稿分支
+        serviceFor(Viewer.of(7L, false)).neighbors(18L);
+
+        for (AbstractWrapper<Article, ?, ?> wrapper : neighborWrappers()) {
+            String sql = wrapper.getSqlSegment();
+            // 这段 SQL 只可能来自 visibility 模块 —— ArticleService 自己从不写封禁子查询
+            assertTrue(sql.contains("FROM users WHERE status = #"),
+                    "候选查询应带上模块的封禁谓词,实际: " + sql);
+            assertTrue(sql.contains("status = #"), "候选集合限定已发布,实际: " + sql);
+            assertFalse(PARENTHESIZED_OR_GROUP.matcher(sql).find(),
+                    "候选集合是列表的口径:草稿不该出现在邻居里,实际: " + sql);
+            assertTrue(wrapper.getParamNameValuePairs().containsValue(18L),
+                    "邻居条件绑定的是当前文章的 id,实际: " + wrapper.getParamNameValuePairs());
+        }
+    }
+
+    @Test
+    @DisplayName("管理员:候选集合同样与列表同口径 —— 谓词被省略,草稿与封禁作者也在候选里")
+    void neighbors_shouldPickCandidates_withoutAnyFilterForAdmin() {
+        when(articleMapper.selectOne(any())).thenReturn(publishedAt(18L, "当前", T0));
+        stubNeighborRows(null, null);
+
+        serviceFor(Viewer.of(1L, true)).neighbors(18L);
+
+        for (AbstractWrapper<Article, ?, ?> wrapper : neighborWrappers()) {
+            String sql = wrapper.getSqlSegment();
+            assertFalse(sql.contains("FROM users"), "管理员路径不该有封禁子查询,实际: " + sql);
+            // Service 自己补一个 status = 1 就是第二套可见性规则 —— 管理员会因此少看见两篇
+            assertFalse(sql.contains("status = #"), "候选集合不该由 Service 自己过滤,实际: " + sql);
+        }
+    }
+
+    @Test
+    @DisplayName("当前文章的判定与详情逐字相同:作者自己的草稿也开得了它的邻居")
+    void neighbors_shouldResolveCurrentArticle_withTheSameScopeAsDetail() {
+        when(articleMapper.selectOne(any())).thenReturn(publishedAt(16L, "草稿", T0));
+        stubNeighborRows(null, null);
+
+        serviceFor(Viewer.of(3L, false)).neighbors(16L);
+
+        // 与 detail() 一样走 includingOwnDrafts —— 否则同一个 id 会出现「详情 200、邻居 404」
+        String sql = currentArticleSql();
+        assertTrue(PARENTHESIZED_OR_GROUP.matcher(sql).find(),
+                "当前文章应与 detail 同口径(带上草稿分支),实际: " + sql);
+    }
+
     /** 收藏查询绑定的参数里有没有这个值。参数表是惰性填充的,所以必须先渲染一次。 */
     private boolean favoriteQueryBound(Long value) {
         @SuppressWarnings("unchecked")
@@ -349,5 +503,42 @@ class ArticleServiceTest {
         AbstractWrapper<Article, ?, ?> wrapper = (AbstractWrapper<Article, ?, ?>) captor.getValue();
         wrapper.getSqlSegment();
         return wrapper.getParamNameValuePairs().values();
+    }
+
+    /** 抓「当前文章」那次查询的 SQL 段 —— 断言它与详情同口径。 */
+    private String currentArticleSql() {
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<Wrapper<Article>> captor = ArgumentCaptor.forClass(Wrapper.class);
+        verify(articleMapper).selectOne(captor.capture());
+        return captor.getValue().getSqlSegment();
+    }
+
+    /**
+     * 抓两条候选查询(先 prev、后 next)实际交给 mapper 的 wrapper —— <b>恰好两条</b>,
+     * 因为邻居各取一条就够,不必把候选集合整个取回来再在内存里挑。
+     *
+     * <p>断言的是 SQL 文本而不是「返回了两条」:mock 的 mapper 不评估谓词,所以
+     * 「可见性作用域真的被用上了」只能从实际发出的 SQL 里读出来(手法同 {@code ArticleQueryTest})。
+     * 参数表是惰性填充的,所以先渲染一次 {@code getSqlSegment()}。
+     */
+    @SuppressWarnings("unchecked")
+    private List<AbstractWrapper<Article, ?, ?>> neighborWrappers() {
+        ArgumentCaptor<Wrapper<Article>> captor = ArgumentCaptor.forClass(Wrapper.class);
+        verify(articleMapper, times(2)).selectList(captor.capture());
+        List<AbstractWrapper<Article, ?, ?>> wrappers = new ArrayList<>();
+        for (Wrapper<Article> wrapper : captor.getAllValues()) {
+            // 强转写在显式循环里:交给 stream 时,lambda 会把目标类型推断成捕获到的通配符
+            wrappers.add((AbstractWrapper<Article, ?, ?>) wrapper);
+        }
+        // 参数表是惰性填充的:先渲染一次 SQL 段,后面的断言才读得到绑定值
+        wrappers.forEach(AbstractWrapper::getSqlSegment);
+        return wrappers;
+    }
+
+    /** prev 与 next 各查一次,所以按调用顺序桩定 —— 这个顺序本身也是契约的一部分。 */
+    private void stubNeighborRows(Article prev, Article next) {
+        when(articleMapper.selectList(any())).thenReturn(
+                prev == null ? List.of() : List.of(prev),
+                next == null ? List.of() : List.of(next));
     }
 }

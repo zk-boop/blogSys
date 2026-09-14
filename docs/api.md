@@ -28,6 +28,7 @@
 | GET | `/api/articles/hot?size=` | 热门文章(公开),按浏览量倒序,只含浏览量 > 0 的文章;`size` 默认 5,**服务端上限 20** |
 | GET | `/api/articles/{id}` | 文章详情(公开;草稿仅作者/管理员,且浏览量不增加) |
 | GET | `/api/articles/{id}/edit` | 文章编辑回填(作者或管理员,浏览量不变) |
+| GET | `/api/articles/{id}/neighbors` | 上一篇文章/下一篇文章(公开,与详情同一条可见性判定):`prev` 更早、`next` 更晚,各只含 `id` 与 `title`,没有则为 `null`(**键仍在**,前端按 `neighbors.prev?.id` 判断);候选集合与列表接口同一可见性口径,排序同 `created_at`(并列按 `id` 兜底) |
 | POST | `/api/articles` | 发布/存草稿,body: `{title, content, summary?, cover?, tagNames?, draft?}` |
 | PUT | `/api/articles/{id}` | 编辑文章(作者或管理员,`draft=false` 即发布) |
 | DELETE | `/api/articles/{id}` | 删除文章(作者或管理员,级联删评论/点赞) |

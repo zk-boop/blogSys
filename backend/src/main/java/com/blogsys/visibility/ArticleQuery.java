@@ -64,6 +64,19 @@ public final class ArticleQuery {
     }
 
     /**
+     * 追加升序排序,与 {@link #orderByDesc} 对称。
+     *
+     * <p>方向是调用方的语义(列表要「最新的在前」,而「下一篇」要的是「最近的一个更晚者」),
+     * 不是可见性规则 —— 所以模块给出两个方向,而不是让调用方绕过查询对象自己拼一个 wrapper
+     * (那样候选集合就有了第二个主人,而「哪些文章可见」必须只有一个)。
+     */
+    public ArticleQuery orderByAsc(SFunction<Article, ?> column) {
+        List<Consumer<LambdaQueryWrapper<Article>>> next = new ArrayList<>(orderings);
+        next.add(w -> w.orderByAsc(column));
+        return new ArticleQuery(viewer, articleMapper, ownDraftsIncluded, restrictions, List.copyOf(next));
+    }
+
+    /**
      * 同时纳入 viewer 自己的草稿。
      *
      * <p>这是「罕见形状」的那四个字:公开列表要的是默认值,只有详情页与个人中心需要它。

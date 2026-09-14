@@ -24,8 +24,10 @@ import com.blogsys.security.SecurityUtil;
 import com.blogsys.visibility.ArticleQuery;
 import com.blogsys.visibility.Visibility;
 import com.blogsys.visibility.ViewerSource;
+import com.blogsys.vo.ArticleBriefVO;
 import com.blogsys.vo.ArticleDetailVO;
 import com.blogsys.vo.ArticleListItemVO;
+import com.blogsys.vo.ArticleNeighborsVO;
 import com.blogsys.vo.FavoriteVO;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DuplicateKeyException;
@@ -157,6 +159,66 @@ public class ArticleService {
         if (ArticleStatus.of(article.getStatus()) == ArticleStatus.PUBLISHED) {
             articleMapper.incrViewCount(id);
         }
+    }
+
+    /**
+     * 一篇文章在列表里的邻居:上一篇 / 下一篇。没有就是 {@code null}(键仍在)。
+     *
+     * <p><b>这里刻意是两条不同的可见性口径,各有各的理由。</b>
+     * 当前文章用与 {@link #detail(Long)} 逐字相同的判定({@code includingOwnDrafts}),
+     * 于是作者的草稿打得开详情,也打得开它自己的邻居 —— 否则同一个 id 会得到
+     * 「详情 200 / 邻居 404」这种自相矛盾的答案。
+     *
+     * <p>候选集合则走 {@link #page} 的那条路(公开语料,<b>不</b>登记草稿):
+     * 「上一篇/下一篇」是列表里的邻居,而列表从不包含草稿与封禁作者的文章。
+     * 若改用详情那条作用域,别人的浏览器就会从侧门读到一篇草稿的标题。
+     * 于是候选集合不可能有第二套过滤条件 —— 谁可见仍由 {@link Visibility} 独家回答,
+     * 这里只负责「按时间挨着」。
+     *
+     * <p>排序依据与列表一致({@code created_at}),并以 {@code id} 兜底。兜底不是装饰:
+     * 同一时刻发布的两篇文章若只比较时间,严格不等会把对方排除,于是两篇互相「看不见」,
+     * 各自跳过一个邻居。把比较改成 (created_at, id) 这个全序之后,每篇文章
+     * (除首尾)恰好各有一个前驱与一个后继,重复请求也给出同一个答案。
+     *
+     * <p>两次查询各 {@code LIMIT 1}:邻居只需要一行,不必把候选集合取回来再在内存里挑。
+     */
+    public ArticleNeighborsVO neighbors(Long id) {
+        Article current = visibility.articles().includingOwnDrafts().require(id).article();
+        return new ArticleNeighborsVO(brief(previousOf(current)), brief(nextOf(current)));
+    }
+
+    /**
+     * 更早的最近一篇:(created_at, id) 小于当前的那一篇里最大的一个。
+     *
+     * <p>比较写在 {@code where(Consumer)} 里,所以它会被模块整体括起 —— 一个同级条件
+     * 改不动可见性谓词的含义,反过来也一样。
+     */
+    private Article previousOf(Article current) {
+        return visibility.articles()
+                .where(w -> w.lt(Article::getCreatedAt, current.getCreatedAt())
+                        .or(earlier -> earlier.eq(Article::getCreatedAt, current.getCreatedAt())
+                                .lt(Article::getId, current.getId())))
+                .orderByDesc(Article::getCreatedAt)
+                .orderByDesc(Article::getId)
+                .list(1)
+                .stream().findFirst().orElse(null);
+    }
+
+    /** 更晚的最近一篇:与 {@link #previousOf} 对称,连兜底方向一起镜像。 */
+    private Article nextOf(Article current) {
+        return visibility.articles()
+                .where(w -> w.gt(Article::getCreatedAt, current.getCreatedAt())
+                        .or(later -> later.eq(Article::getCreatedAt, current.getCreatedAt())
+                                .gt(Article::getId, current.getId())))
+                .orderByAsc(Article::getCreatedAt)
+                .orderByAsc(Article::getId)
+                .list(1)
+                .stream().findFirst().orElse(null);
+    }
+
+    /** 「不存在」在响应里就是 {@code null} —— 不用空对象冒充一篇没有的文章。 */
+    private static ArticleBriefVO brief(Article article) {
+        return article == null ? null : new ArticleBriefVO(article.getId(), article.getTitle());
     }
 
     @Transactional
