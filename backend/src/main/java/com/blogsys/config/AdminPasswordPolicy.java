@@ -13,7 +13,7 @@ import java.util.function.Supplier;
  * 收敛成一个可注入的 {@link Supplier},来源判定因此可以完全确定性地测。
  *
  * <p>为什么非 local 要随机:固定口令 {@code admin123} 跟着源码一起公开,等于给每个
- * 部署者装了一扇公共后门 —— 攻击者不需要猜,读一遍源码就知道。生成的一次性口令只在
+ * 部署实例装了一扇公共后门 —— 攻击者不需要猜,读一遍源码就知道。生成的一次性口令只在
  * 首次启动的日志里出现一次,部署者抄走即可。
  */
 public final class AdminPasswordPolicy {

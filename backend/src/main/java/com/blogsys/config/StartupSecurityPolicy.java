@@ -9,7 +9,7 @@ import java.util.Arrays;
  * 是本项目最容易出错也最该被测到的一条规则,而本仓库没有 {@code @SpringBootTest} ——
  * 判定逻辑留在容器里就只能靠人肉启动一次来验证。装配见 {@link StartupSecurityCheck}。
  *
- * <p>为什么分界线画在 profile 上:这份代码是要会被直接部署上线的,部署者常常直接
+ * <p>为什么分界线画在 profile 上:这份代码会被直接部署上线,部署者常常直接
  * {@code java -jar} 上线。仓库里的默认密钥一旦跟着上线,任何人都能自己签一个合法 token
  * 冒充管理员 —— 而且这种错误**不会以任何方式自曝**,站点看起来一切正常。本地开发
  * (profile=local)又需要开箱即用,所以规则只对非 local 生效。
